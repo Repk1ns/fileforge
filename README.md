@@ -130,9 +130,19 @@ same type — the library backs off thanks to `@ConditionalOnMissingBean`.
 ./gradlew publish
 ```
 
-Releases are published automatically by GitHub Actions on tag push:
+## Releasing
+
+Publishing to GitHub Packages is done automatically by GitHub Actions whenever a
+**GitHub Release** is published with a tag in the `v.MAJOR.MINOR.PATCH` format
+(e.g. `v.0.1.0`). The Maven artifact version is derived from the tag by
+stripping the `v.` prefix (`v.0.1.0` → `0.1.0`).
+
+Either create the release from the GitHub UI (*Releases → Draft a new release*),
+or via the GitHub CLI:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+gh release create v.0.1.0 --title "v.0.1.0" --generate-notes
 ```
+
+Local builds that don't set the `RELEASE_VERSION` environment variable use the
+`0.1.0-SNAPSHOT` fallback version.
