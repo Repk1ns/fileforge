@@ -17,13 +17,13 @@ import java.net.URI
 /**
  * Auto-configuration for the S3-backed [FileStorageService].
  *
- * Activated when the AWS S3 client is on the classpath and `storage.s3.endpoint`
+ * Activated when the AWS S3 client is on the classpath and `fileforge.s3.endpoint`
  * is configured. Every bean is conditional on a missing bean so consumers can
  * override any part of the wiring.
  */
 @AutoConfiguration
 @ConditionalOnClass(S3Client::class)
-@ConditionalOnProperty(prefix = "storage.s3", name = ["endpoint"])
+@ConditionalOnProperty(prefix = "fileforge.s3", name = ["endpoint"])
 @EnableConfigurationProperties(FileStorageProperties::class)
 class FileStorageAutoConfiguration {
 

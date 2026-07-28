@@ -1,52 +1,52 @@
 {
   "groups": [
     {
-      "name": "storage.s3",
+      "name": "fileforge.s3",
       "type": "net.mimochodek.fileforge.FileStorageProperties",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties"
     }
   ],
   "properties": [
     {
-      "name": "storage.s3.endpoint",
+      "name": "fileforge.s3.endpoint",
       "type": "java.lang.String",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "S3-compatible endpoint URL, e.g. http://nas:7070. Setting this property enables the auto-configuration."
     },
     {
-      "name": "storage.s3.region",
+      "name": "fileforge.s3.region",
       "type": "java.lang.String",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "S3 region.",
       "defaultValue": "us-east-1"
     },
     {
-      "name": "storage.s3.bucket",
+      "name": "fileforge.s3.bucket",
       "type": "java.lang.String",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "Bucket used by the consuming application."
     },
     {
-      "name": "storage.s3.access-key",
+      "name": "fileforge.s3.access-key",
       "type": "java.lang.String",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "Access key for the S3 endpoint."
     },
     {
-      "name": "storage.s3.secret-key",
+      "name": "fileforge.s3.secret-key",
       "type": "java.lang.String",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "Secret key for the S3 endpoint."
     },
     {
-      "name": "storage.s3.max-file-size-bytes",
+      "name": "fileforge.s3.max-file-size-bytes",
       "type": "java.lang.Long",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "Maximum allowed file size in bytes.",
       "defaultValue": 52428800
     },
     {
-      "name": "storage.s3.allowed-mime-types",
+      "name": "fileforge.s3.allowed-mime-types",
       "type": "java.util.List<java.lang.String>",
       "sourceType": "net.mimochodek.fileforge.FileStorageProperties",
       "description": "Whitelist of allowed MIME types.",

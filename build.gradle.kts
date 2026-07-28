@@ -43,13 +43,13 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            artifactId = "file-storage-spring-boot-starter"
+            artifactId = "fileforge"
         }
     }
     repositories {
         maven {
             name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/mimochodek/file-storage-spring-boot-starter")
+            url = uri("https://maven.pkg.github.com/Repk1ns/fileforge")
             credentials {
                 username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
                 password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?

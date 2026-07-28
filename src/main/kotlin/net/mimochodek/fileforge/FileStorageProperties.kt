@@ -3,9 +3,9 @@ package net.mimochodek.fileforge
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 /**
- * Configuration properties bound to the `storage.s3` prefix.
+ * Configuration properties bound to the `fileforge.s3` prefix.
  */
-@ConfigurationProperties(prefix = "storage.s3")
+@ConfigurationProperties(prefix = "fileforge.s3")
 data class FileStorageProperties(
     /** S3-compatible endpoint, e.g. `http://nas:7070`. */
     val endpoint: String,

@@ -32,7 +32,7 @@ gpr.token=<a personal access token with read:packages>
 repositories {
     mavenCentral()
     maven {
-        url = uri("https://maven.pkg.github.com/mimochodek/file-storage-spring-boot-starter")
+        url = uri("https://maven.pkg.github.com/Repk1ns/fileforge")
         credentials {
             username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
             password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
@@ -41,14 +41,14 @@ repositories {
 }
 
 dependencies {
-    implementation("net.mimochodek:file-storage-spring-boot-starter:0.1.0")
+    implementation("net.mimochodek:file-storage-spring-boot-starter:1.0.0")
 }
 ```
 
 ## Configuration
 
 ```yaml
-storage:
+fileforge:
   s3:
     endpoint: http://<nas-ip>:7070      # required — enables the auto-configuration
     region: us-east-1                   # default: us-east-1
@@ -66,13 +66,13 @@ storage:
 
 | Key | Required | Default | Description |
 | --- | --- | --- | --- |
-| `storage.s3.endpoint` | yes | — | S3-compatible endpoint URL; the auto-configuration only activates when set |
-| `storage.s3.region` | no | `us-east-1` | S3 region |
-| `storage.s3.bucket` | yes | — | Bucket name |
-| `storage.s3.access-key` | yes | — | Access key |
-| `storage.s3.secret-key` | yes | — | Secret key |
-| `storage.s3.max-file-size-bytes` | no | `52428800` | Max upload size enforced by `FileValidationService` |
-| `storage.s3.allowed-mime-types` | no | jpeg/png/webp/pdf | MIME whitelist enforced by `FileValidationService` |
+| `fileforge.s3.endpoint` | yes | — | S3-compatible endpoint URL; the auto-configuration only activates when set |
+| `fileforge.s3.region` | no | `us-east-1` | S3 region |
+| `fileforge.s3.bucket` | yes | — | Bucket name |
+| `fileforge.s3.access-key` | yes | — | Access key |
+| `fileforge.s3.secret-key` | yes | — | Secret key |
+| `fileforge.s3.max-file-size-bytes` | no | `52428800` | Max upload size enforced by `FileValidationService` |
+| `fileforge.s3.allowed-mime-types` | no | jpeg/png/webp/pdf | MIME whitelist enforced by `FileValidationService` |
 
 ## Usage
 
@@ -133,16 +133,13 @@ same type — the library backs off thanks to `@ConditionalOnMissingBean`.
 ## Releasing
 
 Publishing to GitHub Packages is done automatically by GitHub Actions whenever a
-**GitHub Release** is published with a tag in the `v.MAJOR.MINOR.PATCH` format
-(e.g. `v.0.1.0`). The Maven artifact version is derived from the tag by
-stripping the `v.` prefix (`v.0.1.0` → `0.1.0`).
-
-Either create the release from the GitHub UI (*Releases → Draft a new release*),
-or via the GitHub CLI:
+tag in the `vMAJOR.MINOR.PATCH` format (e.g. `v1.0.0`) is pushed:
 
 ```bash
-gh release create v.0.1.0 --title "v.0.1.0" --generate-notes
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-Local builds that don't set the `RELEASE_VERSION` environment variable use the
-`0.1.0-SNAPSHOT` fallback version.
+Keep the `version` in `build.gradle.kts` in sync with the tag — the published
+Maven artifact version comes from `build.gradle.kts`, not from the tag. Each
+version can be published only once, so bump it for every release.
