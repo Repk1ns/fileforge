@@ -80,10 +80,10 @@ publishing {
 }
 
 signing {
-    val signingKey: String? = System.getenv("GPG_PRIVATE_KEY")
-    val signingPassword: String? = System.getenv("GPG_PASSPHRASE")
-
-    useInMemoryPgpKeys(signingKey, signingPassword)
+    useInMemoryPgpKeys(
+        providers.gradleProperty("signingKey").orNull,
+        providers.gradleProperty("signingPassword").orNull
+    )
 
     sign(publishing.publications)
 
