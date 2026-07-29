@@ -1,8 +1,10 @@
 plugins {
     kotlin("jvm") version "2.1.10"
     kotlin("plugin.spring") version "2.1.10"
+    id("org.jetbrains.dokka") version "2.0.0"
     `java-library`
     `maven-publish`
+    signing
 }
 
 group = "net.mimochodek"
@@ -33,27 +35,58 @@ java {
         languageVersion = JavaLanguageVersion.of(21)
     }
     withSourcesJar()
+    withJavadocJar()
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
             artifactId = "fileforge"
-        }
-    }
-    repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/Repk1ns/fileforge")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
-                password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
+
+            pom {
+                name.set("FileForge")
+                description.set("Spring Boot library for abstracting file storage with pluggable storage providers.")
+                url.set("https://github.com/Repk1ns/fileforge")
+
+                licenses {
+                    license {
+                        name.set("MIT License")
+                        url.set("https://spdx.org/licenses/MIT.html")
+                        distribution.set("repo")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("Repk1ns")
+                        name.set("Repkins")
+                    }
+                }
+
+                scm {
+                    url.set("https://github.com/Repk1ns/fileforge")
+                    connection.set("scm:git:https://github.com/Repk1ns/fileforge.git")
+                    developerConnection.set("scm:git:https://github.com/Repk1ns/fileforge.git")
+                }
             }
         }
     }
 }
+
+signing {
+    val signingKey: String? = System.getenv("GPG_PRIVATE_KEY")
+    val signingPassword: String? = System.getenv("GPG_PASSPHRASE")
+
+    useInMemoryPgpKeys(signingKey, signingPassword)
+
+    sign(publishing.publications)
+
+    isRequired = gradle.taskGraph.hasTask("publish")
+}
+
