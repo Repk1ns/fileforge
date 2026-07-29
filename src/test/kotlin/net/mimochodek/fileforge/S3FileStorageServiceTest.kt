@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequ
 import java.io.ByteArrayInputStream
 import java.net.URI
 import java.time.Duration
+import java.time.Year
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -57,13 +58,44 @@ class S3FileStorageServiceTest {
             PutObjectResponse.builder().build()
 
         val content = ByteArrayInputStream("hello".toByteArray())
-        service.upload("docs/file.pdf", content, 5, "application/pdf")
+        val generatedKey = service.upload("docs/file.pdf", content, 5, "application/pdf")
 
         val request = requestSlot.captured
         assertEquals("test-bucket", request.bucket())
-        assertEquals("docs/file.pdf", request.key())
+        assertEquals(generatedKey, request.key())
         assertEquals("application/pdf", request.contentType())
         assertEquals(5L, request.contentLength())
+    }
+
+    @Test
+    fun `should generate object key as year underscore uuid with original extension`() {
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
+            PutObjectResponse.builder().build()
+
+        val generatedKey = service.upload(
+            "docs/photo.jpeg",
+            ByteArrayInputStream("hello".toByteArray()),
+            5,
+            "image/jpeg",
+        )
+
+        val year = Year.now().value
+        val uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        assertTrue(
+            Regex("docs/${year}_$uuidPattern\\.jpeg").matches(generatedKey),
+            "Unexpected generated key: $generatedKey",
+        )
+    }
+
+    @Test
+    fun `should generate unique object keys for repeated uploads`() {
+        every { s3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
+            PutObjectResponse.builder().build()
+
+        val first = service.upload("photo.png", ByteArrayInputStream(ByteArray(0)), 0, "image/png")
+        val second = service.upload("photo.png", ByteArrayInputStream(ByteArray(0)), 0, "image/png")
+
+        assertTrue(first != second)
     }
 
     @Test

@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import java.io.ByteArrayInputStream
 import java.net.URI
 import java.time.Duration
+import java.time.Year
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -52,9 +53,10 @@ class S3FileStorageServiceIntegrationTest {
     private lateinit var s3Presigner: S3Presigner
     private lateinit var service: S3FileStorageService
 
-    private val objectKey = "docs/report.pdf"
-    private val archivedKey = "archive/report.pdf"
     private val fileContent = "%PDF-1.7 integration test payload".toByteArray()
+
+    private lateinit var objectKey: String
+    private lateinit var archivedKey: String
 
     @BeforeAll
     fun setUp() {
@@ -99,8 +101,21 @@ class S3FileStorageServiceIntegrationTest {
 
     @Test
     @Order(1)
-    fun `should upload object`() {
-        service.upload(objectKey, ByteArrayInputStream(fileContent), fileContent.size.toLong(), "application/pdf")
+    fun `should upload object and return generated key`() {
+        objectKey = service.upload(
+            "docs/report.pdf",
+            ByteArrayInputStream(fileContent),
+            fileContent.size.toLong(),
+            "application/pdf",
+        )
+        archivedKey = "archive/${objectKey.substringAfterLast('/')}"
+
+        val year = Year.now().value
+        val uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        assertTrue(
+            Regex("docs/${year}_$uuidPattern\\.pdf").matches(objectKey),
+            "Unexpected generated key: $objectKey",
+        )
     }
 
     @Test

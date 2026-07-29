@@ -93,11 +93,11 @@ class DocumentService(
         val head = file.inputStream.use { it.readNBytes(16) }
         fileValidation.validate(file.size, file.contentType ?: "application/octet-stream", head)
 
-        val objectKey = "documents/$safeName"
-        file.inputStream.use {
-            fileStorage.upload(objectKey, it, file.size, file.contentType ?: "application/octet-stream")
+        // upload generates a unique key `<year>_<uuid>.<ext>` (e.g. documents/2026_1f7a...c3.jpeg)
+        // and returns it — persist the returned key in your database.
+        return file.inputStream.use {
+            fileStorage.upload("documents/$safeName", it, file.size, file.contentType ?: "application/octet-stream")
         }
-        return objectKey
     }
 
     fun temporaryDownloadLink(objectKey: String) =

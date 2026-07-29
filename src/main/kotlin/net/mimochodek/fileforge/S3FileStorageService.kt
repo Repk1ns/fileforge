@@ -15,6 +15,8 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
 import java.io.InputStream
 import java.net.URL
 import java.time.Duration
+import java.time.Year
+import java.util.UUID
 
 /**
  * [FileStorageService] implementation backed by the AWS SDK v2 [S3Client].
@@ -25,18 +27,40 @@ class S3FileStorageService(
     private val properties: FileStorageProperties,
 ) : FileStorageService {
 
-    override fun upload(objectKey: String, content: InputStream, contentLength: Long, contentType: String) {
+    override fun upload(objectKey: String, content: InputStream, contentLength: Long, contentType: String): String {
+        val generatedKey = generateObjectKey(objectKey)
         val request = PutObjectRequest.builder()
             .bucket(properties.bucket)
-            .key(objectKey)
+            .key(generatedKey)
             .contentType(contentType)
             .contentLength(contentLength)
             .build()
         try {
             s3Client.putObject(request, RequestBody.fromInputStream(content, contentLength))
         } catch (e: S3Exception) {
-            throw FileStorageException("Failed to upload object '$objectKey'", e)
+            throw FileStorageException("Failed to upload object '$generatedKey'", e)
         }
+        return generatedKey
+    }
+
+    /**
+     * Generates a unique object key from [objectKey]: keeps the path prefix (if any),
+     * replaces the file name with `<year>_<uuid>` and preserves the original extension.
+     */
+    private fun generateObjectKey(objectKey: String): String {
+        val prefix = objectKey.substringBeforeLast('/', "")
+        val fileName = objectKey.substringAfterLast('/')
+        val extension = fileName.substringAfterLast('.', "")
+        val generatedName = buildString {
+            append(Year.now().value)
+            append('_')
+            append(UUID.randomUUID())
+            if (extension.isNotEmpty()) {
+                append('.')
+                append(extension)
+            }
+        }
+        return if (prefix.isEmpty()) generatedName else "$prefix/$generatedName"
     }
 
     override fun download(objectKey: String): InputStream {

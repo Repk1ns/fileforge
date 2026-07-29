@@ -13,8 +13,14 @@ import java.time.Duration
  */
 interface FileStorageService {
 
-    /** Uploads [content] under [objectKey]. */
-    fun upload(objectKey: String, content: InputStream, contentLength: Long, contentType: String)
+    /**
+     * Uploads [content] under a newly generated unique object key and returns it.
+     *
+     * The generated key keeps the path prefix of [objectKey] (if any) and replaces
+     * the file name with `<year>_<uuid>.<extension>`, e.g. `docs/2026_1f7a...c3.jpeg`.
+     * The returned key is what the consuming application should persist (e.g. in its database).
+     */
+    fun upload(objectKey: String, content: InputStream, contentLength: Long, contentType: String): String
 
     /** Downloads the object stored under [objectKey]. */
     fun download(objectKey: String): InputStream
