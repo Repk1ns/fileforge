@@ -81,20 +81,24 @@ publishing {
 }
 
 signing {
-    useInMemoryPgpKeys(
-        providers.gradleProperty("signingKey").orNull,
-        providers.gradleProperty("signingPassword").orNull
-    )
+    val signingKey = providers.gradleProperty("signingKey").orNull
+    val signingPassword = providers.gradleProperty("signingPassword").orNull
+
+    if (!signingKey.isNullOrBlank()) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
 
     sign(publishing.publications)
 
-    isRequired = gradle.taskGraph.hasTask("publish")
+    isRequired = !signingKey.isNullOrBlank()
 }
 
 nmcpAggregation {
     centralPortal {
-        username = System.getenv("MAVEN_CENTRAL_USERNAME")
-        password = System.getenv("MAVEN_CENTRAL_PASSWORD")
+        username = providers.gradleProperty("mavenCentralUsername")
+            .orElse(providers.environmentVariable("MAVEN_CENTRAL_USERNAME"))
+        password = providers.gradleProperty("mavenCentralPassword")
+            .orElse(providers.environmentVariable("MAVEN_CENTRAL_PASSWORD"))
         publishingType = "AUTOMATIC"
     }
 
