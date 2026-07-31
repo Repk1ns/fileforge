@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm") version "2.1.10"
     kotlin("plugin.spring") version "2.1.10"
     id("org.jetbrains.dokka") version "2.0.0"
+    id("com.gradleup.nmcp.aggregation") version "1.6.1"
     `java-library`
     `maven-publish`
     signing
@@ -88,5 +89,15 @@ signing {
     sign(publishing.publications)
 
     isRequired = gradle.taskGraph.hasTask("publish")
+}
+
+nmcpAggregation {
+    centralPortal {
+        username = System.getenv("MAVEN_CENTRAL_USERNAME")
+        password = System.getenv("MAVEN_CENTRAL_PASSWORD")
+        publishingType = "AUTOMATIC"
+    }
+
+    publishAllProjectsProbablyBreakingProjectIsolation()
 }
 
