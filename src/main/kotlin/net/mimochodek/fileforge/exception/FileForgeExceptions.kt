@@ -94,3 +94,18 @@ public class StorageUnavailableException(
     message: String,
     cause: Throwable? = null,
 ) : FileStorageException(message, cause)
+
+/**
+ * A `store` call named a profile that is not configured.
+ *
+ * Reported eagerly with the list of known profiles, because the cause is always
+ * a typo or a missing `fileforge.profiles` entry rather than anything the end
+ * user did.
+ */
+public class UnknownStorageProfileException(
+    public val profile: String,
+    public val knownProfiles: Set<String>,
+) : FileStorageException(
+    "Unknown storage profile '$profile'; configured profiles are " +
+        if (knownProfiles.isEmpty()) "none" else knownProfiles.sorted().joinToString(", "),
+)

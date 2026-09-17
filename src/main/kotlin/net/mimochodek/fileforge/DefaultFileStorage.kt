@@ -1,5 +1,6 @@
 package net.mimochodek.fileforge
 
+import net.mimochodek.fileforge.exception.UnknownStorageProfileException
 import net.mimochodek.fileforge.internal.resolveContent
 import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileContent
@@ -38,18 +39,28 @@ public class DefaultFileStorage(
     private val maxFileSize: Long,
     private val inMemoryThreshold: Long = DEFAULT_IN_MEMORY_THRESHOLD,
     private val tempDir: Path? = null,
+    private val profiles: Map<String, StorageProfile> = emptyMap(),
     private val clock: Clock = Clock.systemUTC(),
 ) : FileStorage {
 
     override fun store(upload: FileUpload): StoredFile {
         val fileName = FileNames.sanitize(upload.fileName)
+        val profile = upload.profile?.let {
+            profiles[it] ?: throw UnknownStorageProfileException(it, profiles.keys)
+        }
+        // A profile only supplies what it overrides: its own cap and policy when
+        // configured, otherwise the global ones - which is what keeps a consumer's
+        // custom FileValidator in effect for profiles that only set a folder.
+        val effectiveMaxSize = profile?.maxFileSize ?: maxFileSize
+        val effectiveValidator = profile?.validator ?: validator
+        val folder = upload.folder.ifBlank { profile?.folder.orEmpty() }
 
-        return resolveContent(upload.content, maxFileSize, inMemoryThreshold, tempDir).use { content ->
+        return resolveContent(upload.content, effectiveMaxSize, inMemoryThreshold, tempDir).use { content ->
             val contentType = upload.contentType
                 ?.let { ContentTypeDetector.normalize(it) }
                 ?: ContentTypeDetector.detect(content.head, fileName)
 
-            validator.validate(
+            effectiveValidator.validate(
                 FileCandidate(
                     fileName = fileName,
                     contentType = contentType,
@@ -58,7 +69,7 @@ public class DefaultFileStorage(
                 ),
             )
 
-            val key = keyGenerator.generate(ObjectKeyRequest(fileName, upload.folder, contentType))
+            val key = keyGenerator.generate(ObjectKeyRequest(fileName, folder, contentType))
             val result = content.openStream().use { stream ->
                 backend.put(
                     BackendPutRequest(
@@ -92,8 +103,13 @@ public class DefaultFileStorage(
         }
     }
 
-    override fun store(fileName: String, bytes: ByteArray, contentType: String?, folder: String): StoredFile =
-        store(FileUpload(fileName, ContentSource.Bytes(bytes), contentType, folder))
+    override fun store(
+        fileName: String,
+        bytes: ByteArray,
+        contentType: String?,
+        folder: String,
+        profile: String?,
+    ): StoredFile = store(FileUpload(fileName, ContentSource.Bytes(bytes), contentType, folder, profile = profile))
 
     override fun read(key: String): FileContent {
         log.debug("Reading {}", key)

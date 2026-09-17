@@ -4,6 +4,7 @@ import net.mimochodek.fileforge.exception.ContentMismatchException
 import net.mimochodek.fileforge.exception.FileNotFoundStorageException
 import net.mimochodek.fileforge.exception.FileSizeExceededException
 import net.mimochodek.fileforge.exception.InvalidFileNameException
+import net.mimochodek.fileforge.exception.UnknownStorageProfileException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.model.FileContent
 import net.mimochodek.fileforge.model.FileMetadata
@@ -47,6 +48,8 @@ public interface FileStorage {
      * @throws FileSizeExceededException when the content exceeds the configured limit.
      * @throws UnsupportedFileTypeException when the content type is not whitelisted.
      * @throws ContentMismatchException when the content does not match its type.
+     * @throws UnknownStorageProfileException when [FileUpload.profile] names a
+     *   profile that is not configured.
      */
     public fun store(upload: FileUpload): StoredFile
 
@@ -56,6 +59,7 @@ public interface FileStorage {
         bytes: ByteArray,
         contentType: String? = null,
         folder: String = "",
+        profile: String? = null,
     ): StoredFile
 
     /**

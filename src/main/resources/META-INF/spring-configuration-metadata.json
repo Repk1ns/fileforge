@@ -160,6 +160,12 @@
       "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
       "description": "Path-style addressing. True suits self-hosted gateways; set false for real AWS S3.",
       "defaultValue": true
+    },
+    {
+      "name": "fileforge.profiles",
+      "type": "java.util.Map<java.lang.String,net.mimochodek.fileforge.autoconfigure.ProfileProperties>",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "description": "Named upload categories keyed by profile name, each supplying a folder and optional validation overrides that inherit from fileforge.validation. Referenced as store(file, profile = \"documents\")."
     }
   ],
   "hints": [

@@ -72,6 +72,14 @@ fileforge:
   web:
     problem-details:
       enabled: false               # opt-in RFC 7807 error responses
+
+  profiles:                        # optional named upload categories
+    avatars:
+      folder: avatars
+      validation: { max-file-size: 2MB, allowed-mime-types: [image/jpeg, image/png] }
+    documents:
+      folder: documents
+      validation: { max-file-size: 25MB, allowed-mime-types: [application/pdf] }
 ```
 
 Only `fileforge.s3.bucket` is required. A missing or contradictory setting fails
@@ -126,6 +134,8 @@ and returned by `metadata(key)`, so you do not have to keep it in your database.
 | `fileforge.buffering.in-memory-threshold` | no | `1MB` | Larger uploads spill to a temp file |
 | `fileforge.buffering.temp-dir` | no | JVM temp dir | Where to spill |
 | `fileforge.web.problem-details.enabled` | no | `false` | Publish the RFC 7807 handler |
+| `fileforge.profiles.<name>.folder` | no | — | Folder for that profile |
+| `fileforge.profiles.<name>.validation.*` | no | inherits `fileforge.validation` | Per-profile overrides |
 
 ## Usage
 
@@ -166,6 +176,23 @@ data class StoredFile(
 
 The size limit applies to the bytes that arrive, not to any value you pass —
 `ContentSource.Stream(stream, length)` treats `length` as a hint only.
+
+### Profiles
+
+Declaring a category once removes the folder concatenation and limit checks that
+otherwise get rewritten per call site:
+
+```kotlin
+storage.store(file, profile = "documents")   // folder and policy come from config
+storage.store(file, profile = "avatars")
+```
+
+A profile's `validation` block overrides `fileforge.validation` field by field,
+so setting only `max-file-size` narrows the size while keeping the global MIME
+whitelist. A profile that sets only a `folder` keeps the global policy entirely —
+including a custom `FileValidator` bean, if you published one. Naming a profile
+that is not configured throws `UnknownStorageProfileException`, listing the ones
+that are.
 
 ### Reading
 

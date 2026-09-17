@@ -16,6 +16,9 @@ import org.springframework.web.multipart.MultipartFile
  *
  * ```kotlin
  * fun upload(file: MultipartFile) = storage.store(file, folder = "documents")
+ *
+ * // or, with the folder and policy declared once under fileforge.profiles:
+ * fun upload(file: MultipartFile) = storage.store(file, profile = "documents")
  * ```
  *
  * The content type is passed as the browser declared it, which means it is
@@ -27,6 +30,7 @@ import org.springframework.web.multipart.MultipartFile
 public fun FileStorage.store(
     file: MultipartFile,
     folder: String = "",
+    profile: String? = null,
     metadata: Map<String, String> = emptyMap(),
 ): StoredFile = store(
     FileUpload(
@@ -35,5 +39,6 @@ public fun FileStorage.store(
         contentType = file.contentType?.takeIf { it.isNotBlank() },
         folder = folder,
         metadata = metadata,
+        profile = profile,
     ),
 )

@@ -106,6 +106,7 @@ read.
 | — | `fileforge.provider` (drives activation) |
 | — | `fileforge.s3.path-style-access` (was hardcoded `true`) |
 | — | `fileforge.naming.*`, `fileforge.buffering.*`, `fileforge.web.*` |
+| — | `fileforge.profiles.*` (named upload categories) |
 
 Sizes are now Spring `DataSize`, so `50MB`, `2048KB` and a raw byte count all
 work.
@@ -159,7 +160,29 @@ configuration is required.
 If you were *consuming* FileForge's `S3Client` for your own purposes, declare
 your own bean — it will no longer conflict.
 
-## 7. Optional: delete your error-handling advice
+## 7. Optional: replace per-category folder logic with profiles
+
+If you had `"documents/$name"` in one service and a hand-rolled 2 MB avatar
+check in another, declare both once:
+
+```yaml
+fileforge:
+  profiles:
+    avatars:
+      folder: avatars
+      validation: { max-file-size: 2MB, allowed-mime-types: [image/jpeg, image/png] }
+    documents:
+      folder: documents
+      validation: { max-file-size: 25MB, allowed-mime-types: [application/pdf] }
+```
+
+```kotlin
+storage.store(file, profile = "documents")
+```
+
+Purely additive — if you pass `folder` instead, nothing changes.
+
+## 8. Optional: delete your error-handling advice
 
 If you wrote a `@RestControllerAdvice` mapping FileForge exceptions to HTTP
 statuses, replace it with:
@@ -187,3 +210,4 @@ handling in charge.
 - [ ] Set `naming.strategy: year-uuid` if you want the old key layout
 - [ ] Declare the AWS SDK yourself if your code imports it
 - [ ] Drop `S3Client` / `S3Presigner` overrides, or replace with a `StorageBackend` bean
+- [ ] Optional: move per-category folders and limits into `fileforge.profiles`

@@ -26,10 +26,68 @@ public class FileForgeProperties(
     public val validation: ValidationProperties = ValidationProperties(),
     public val buffering: BufferingProperties = BufferingProperties(),
     public val web: WebProperties = WebProperties(),
+    /**
+     * Named upload categories, keyed by profile name - see [ProfileProperties].
+     */
+    public val profiles: Map<String, ProfileProperties> = emptyMap(),
 ) {
     public companion object {
         public const val PROVIDER_S3: String = "s3"
     }
+}
+
+/**
+ * One named upload category - `fileforge.profiles.<name>`.
+ *
+ * ```yaml
+ * fileforge:
+ *   profiles:
+ *     avatars:
+ *       folder: avatars
+ *       validation:
+ *         max-file-size: 2MB
+ *         allowed-mime-types: [image/jpeg, image/png]
+ *     documents:
+ *       folder: documents
+ *       validation:
+ *         max-file-size: 25MB
+ *         allowed-mime-types: [application/pdf]
+ * ```
+ *
+ * Referenced as `storage.store(file, profile = "documents")`, which replaces the
+ * per-category folder concatenation and limit checks that would otherwise be
+ * rewritten in every consuming application.
+ */
+public class ProfileProperties(
+    public val folder: String = "",
+    public val validation: ProfileValidationProperties = ProfileValidationProperties(),
+)
+
+/**
+ * A profile's validation overrides - `fileforge.profiles.<name>.validation`.
+ *
+ * Every field is nullable and inherits from `fileforge.validation` when unset,
+ * so setting only `max-file-size` narrows the size limit while keeping the
+ * global MIME whitelist. A non-nullable nested type would silently reset the
+ * other fields to the library defaults instead of the configured ones.
+ */
+public class ProfileValidationProperties(
+    public val maxFileSize: DataSize? = null,
+    public val allowedMimeTypes: List<String>? = null,
+    public val verifyMagicBytes: Boolean? = null,
+    public val unknownTypePolicy: UnknownTypePolicy? = null,
+) {
+    /** `true` when the profile overrides nothing and should use the global policy. */
+    public fun isEmpty(): Boolean =
+        maxFileSize == null && allowedMimeTypes == null && verifyMagicBytes == null && unknownTypePolicy == null
+
+    /** This profile's overrides applied on top of [global]. */
+    public fun mergedWith(global: ValidationProperties): ValidationProperties = ValidationProperties(
+        maxFileSize = maxFileSize ?: global.maxFileSize,
+        allowedMimeTypes = allowedMimeTypes ?: global.allowedMimeTypes,
+        verifyMagicBytes = verifyMagicBytes ?: global.verifyMagicBytes,
+        unknownTypePolicy = unknownTypePolicy ?: global.unknownTypePolicy,
+    )
 }
 
 /** Optional Spring MVC integration - `fileforge.web`. */

@@ -2,6 +2,7 @@ package net.mimochodek.fileforge.autoconfigure
 
 import net.mimochodek.fileforge.DefaultFileStorage
 import net.mimochodek.fileforge.FileStorage
+import net.mimochodek.fileforge.StorageProfile
 import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.spi.ObjectKeyGenerator
@@ -39,12 +40,7 @@ public class FileForgeAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public fun fileForgeValidator(properties: FileForgeProperties): FileValidator =
-        DefaultFileValidator(
-            maxFileSize = properties.validation.maxFileSize.toBytes(),
-            allowedMimeTypes = properties.validation.allowedMimeTypes,
-            verifyMagicBytes = properties.validation.verifyMagicBytes,
-            unknownTypePolicy = properties.validation.unknownTypePolicy,
-        )
+        properties.validation.toValidator()
 
     @Bean
     @ConditionalOnBean(StorageBackend::class)
@@ -61,5 +57,31 @@ public class FileForgeAutoConfiguration {
         maxFileSize = properties.validation.maxFileSize.toBytes(),
         inMemoryThreshold = properties.buffering.inMemoryThreshold.toBytes(),
         tempDir = properties.buffering.tempDir,
+        profiles = properties.toStorageProfiles(),
+    )
+
+    /**
+     * A profile that overrides nothing keeps [validator] - including a
+     * consumer's replacement - and only contributes its folder.
+     */
+    private fun FileForgeProperties.toStorageProfiles(): Map<String, StorageProfile> =
+        profiles.mapValues { (_, profile) ->
+            if (profile.validation.isEmpty()) {
+                StorageProfile(folder = profile.folder)
+            } else {
+                val policy = profile.validation.mergedWith(validation)
+                StorageProfile(
+                    folder = profile.folder,
+                    validator = policy.toValidator(),
+                    maxFileSize = policy.maxFileSize.toBytes(),
+                )
+            }
+        }
+
+    private fun ValidationProperties.toValidator(): FileValidator = DefaultFileValidator(
+        maxFileSize = maxFileSize.toBytes(),
+        allowedMimeTypes = allowedMimeTypes,
+        verifyMagicBytes = verifyMagicBytes,
+        unknownTypePolicy = unknownTypePolicy,
     )
 }
