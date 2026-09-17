@@ -195,6 +195,18 @@
         },
         {
           "value": "application/pdf"
+        },
+        {
+          "value": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "description": "Word (.docx)"
+        },
+        {
+          "value": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "description": "Excel (.xlsx)"
+        },
+        {
+          "value": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          "description": "PowerPoint (.pptx)"
         }
       ]
     }

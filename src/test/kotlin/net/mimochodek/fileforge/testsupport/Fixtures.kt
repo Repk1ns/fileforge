@@ -9,4 +9,12 @@ object Fixtures {
 
     /** A RIFF container that is not a webp image - the 1.x false positive. */
     val WAV: ByteArray = "RIFF".toByteArray() + byteArrayOf(0x20, 0, 0, 0) + "WAVE".toByteArray()
+
+    /** ZIP local file header - what every .docx / .xlsx / .pptx starts with. */
+    val ZIP: ByteArray = byteArrayOf(0x50, 0x4B, 0x03, 0x04) + ByteArray(16)
+
+    /** OLE2 compound file header - what every legacy .doc / .xls starts with. */
+    val OLE2: ByteArray =
+        byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte()) +
+            ByteArray(12)
 }

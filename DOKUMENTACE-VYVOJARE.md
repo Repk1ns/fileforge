@@ -14,7 +14,7 @@ Dokumentace **pro vývojáře a údržbáře samotné knihovny**, ne pro její k
 - Jak archivovat místo mazání → [recept v sekci 18](#archivovat-místo-mazání)
 
 Verze popisovaného stavu: **2.0.0**, Kotlin `2.1.10`, JVM 21, AWS SDK v2,
-Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 173 testů.
+Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 191 testů.
 
 ---
 
@@ -415,8 +415,18 @@ bytes. Aplikuje se **nepodmíněně** při každém `store()`.
 
 ### `MagicBytes.kt` (78 ř.)
 
-Tabulka podpisů pro 9 typů: `image/jpeg`, `png`, `webp`, `gif`, `tiff`, `bmp`,
-`application/pdf`, `zip`, `gzip`.
+Tabulka podpisů pro 16 typů: `image/jpeg`, `png`, `webp`, `gif`, `tiff`, `bmp`,
+`application/pdf`, `zip`, `gzip`, OLE2 obal a šest Office typů (OOXML i legacy).
+
+**Na pořadí v `SIGNATURES` záleží.** `detect()` vrací **první** shodu, takže
+`application/zip` musí být zaregistrovaný **před** OOXML typy — jinak by se
+obyčejný `.zip` detekoval jako `.docx`. Konkrétní Office typ pak z obalu určí
+přípona v `ContentTypeDetector`. Totéž platí pro `OLE2` před legacy typy.
+
+Proč jsou Office typy v tabulce vůbec, když jejich podpis je jen podpis ZIPu:
+dokud tam nebyly, `isKnown()` pro ně vracelo `false`, ověřování se přeskočilo
+a **spustitelný soubor deklarovaný jako `.docx` prošel bez jediné kontroly**.
+Teď se alespoň potvrdí, že to ZIP container je.
 
 Klíčový detail modelu: `Signature` drží **seznam částí (`Part`), které musí
 platit VŠECHNY** na svých offsetech.
@@ -439,8 +449,20 @@ API: `isKnown(contentType)`, `matches(contentType, head)`, `detect(head)`.
 - `normalize(contentType)` — zahodí parametry (`; charset=…`), otrimuje,
   převede na malá písmena. Používá se **všude**, kde se typy porovnávají.
 - `detect(head, fileName)` — **magic bytes vyhrávají nad příponou**, protože
-  přípona je pod kontrolou útočníka. Fallback: mapa 20 přípon, pak
+  přípona je pod kontrolou útočníka. Fallback: mapa přípon, pak
   `application/octet-stream`.
+
+**Jediná výjimka z pravidla „magic bytes vyhrávají": obalové formáty.**
+`.docx`/`.xlsx`/`.pptx` **jsou** ZIP archivy a `.doc`/`.xls` **jsou** OLE2
+compound files, takže magic bytes nikdy nemohou říct víc než „zip" nebo „ole2" —
+není tu žádný konflikt, který by přípona mohla prohrát. `CONTAINER_REFINEMENTS`
+proto dovolí příponě obal zpřesnit na konkrétní Office typ.
+
+Bez toho každý Office upload bez deklarovaného content typu skončil jako
+`application/zip` a jakýkoli rozumný whitelist ho odmítl. Výjimka je úzce
+vymezená: zpřesnění nastane jen tehdy, když typ z přípony obal skutečně nese,
+takže PDF přejmenované na `.docx` se pořád detekuje jako PDF (testy
+`should not let refinement become a way past the magic bytes`).
 
 ### `DefaultFileValidator.kt` (70 ř.)
 
@@ -839,7 +861,7 @@ Místo toho ruční JSON + `ConfigurationMetadataTest`, který očekávané klí
 
 ## 16. Testy — co která třída chrání
 
-173 testů, 0 skipped. Integrační testy vyžadují Docker.
+191 testů, 0 skipped. Integrační testy vyžadují Docker.
 
 | Soubor | Ř. | Co chrání |
 |---|---|---|
@@ -852,6 +874,8 @@ Místo toho ruční JSON + `ConfigurationMetadataTest`, který očekávané klí
 | `autoconfigure/ProfilePropertiesTest` | 150 | Profily end-to-end: z konfigurace až po vynucení, včetně dědění nenastavených polí. |
 | `validation/DefaultFileValidatorTest` | 150 | Limit, whitelist, magic bytes — včetně regresního testu „WAV nesmí projít jako webp“. |
 | `testsupport/InMemoryStorageBackend` | 124 | **Není to mock, je to druhý úplný backend.** Existuje, aby držel SPI u slibu: kdyby kdy potřeboval vlastní validaci nebo pojmenování, je šev na špatném místě. |
+| `ReadmeSetupTest` | 187 | **Drží README u pravdy.** Nabootuje přesně tu konfiguraci, kterou README nabízí jako hotový recept, a uloží přesně tu směsici souborů, kterou slibuje zvládnout. Copy-paste blok, který nikdo nespouští, se od kódu odchýlí v tichu. |
+| `OfficeUploadTest` | 91 | Celá cesta pro PDF, fotky a Office soubory přes `MultipartFile`, s deklarovaným content typem i bez něj. |
 | `web/MultipartFileExtensionsTest` | 95 | Že extension je bezpečná konstrukcí (deklarovaný typ se ověřuje, `size` se neuvěří). |
 | `web/FileForgeProblemDetailsHandlerTest` | 92 | Mapování statusů, problem extensions, neunikání interních detailů. |
 | `naming/DefaultObjectKeyGeneratorTest` | 88 | Tři strategie, unikátnost, a že se datum bere z **konfigurované** zóny. |
@@ -1084,6 +1108,16 @@ podkladový stream pro další části.
 Bez toho se knihovna u konzumentů tiše vypne.
 
 **Defaulty v SPI nepřidávat** (I8). V `FileStorage` naopak ano.
+
+**Nové podpisy do `MagicBytes.SIGNATURES` patří za obalový typ**, ne před něj —
+`detect()` vrací první shodu. Přidáte-li OOXML typ před `application/zip`,
+obyčejný ZIP se začne detekovat jako Word.
+
+**Spring Boot má vlastní limit uploadu, a platí dřív než náš.**
+`spring.servlet.multipart.max-file-size` je defaultně **1 MB**. Nastavení
+`fileforge.validation.max-file-size` na 20 MB samo nic nezmění — request
+skončí na Springu, ještě než ho knihovna uvidí. README to má mezi
+„Common mistakes" jako první bod.
 
 **`fileforge.provider` má default `s3`.** Přidání závislosti bez konfigurace
 tedy **shodí start** s `fileforge.s3.bucket must be configured`. Je to
@@ -1432,8 +1466,16 @@ val name = storage.metadata(key).fileName
 storage.downloadUrl(key, downloadAs = name)   // stáhne se jako "Quarterly_Report.pdf"
 ```
 
-**Pozor:** odkaz **neřeší autorizaci**. Ověřit, že *tenhle* uživatel na *tenhle*
-soubor smí, musíte vy, ještě než odkaz vygenerujete.
+**Pozor — dvě věci:**
+
+Odkaz **neřeší autorizaci**. Ověřit, že *tenhle* uživatel na *tenhle* soubor smí,
+musíte vy, ještě než odkaz vygenerujete.
+
+A odkaz míří na **host a port úložiště** (`http://nas.local:7070/…`). Běží-li
+gateway jen v lokální síti, prohlížeč uživatele na tu adresu nedosáhne a odkaz
+je mrtvý. Pak obsah posílejte skrz aplikaci (`read(key) { }`), nebo gateway
+vystavte přes reverzní proxy na veřejném jménu a to nastavte jako
+`fileforge.s3.endpoint`.
 
 #### `uploadUrl(key, contentType, ttl): URI`
 

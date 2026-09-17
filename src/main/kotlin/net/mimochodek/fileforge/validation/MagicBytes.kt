@@ -26,6 +26,19 @@ public object MagicBytes {
 
     private fun part(offset: Int, ascii: String) = Signature.Part(ascii.toByteArray(), offset)
 
+    /** Media type of an OLE2 compound file, the container of legacy Office formats. */
+    public const val OLE2: String = "application/x-ole-storage"
+
+    private val ZIP_SIGNATURES = listOf(
+        Signature(part(0x50, 0x4B, 0x03, 0x04)),
+        Signature(part(0x50, 0x4B, 0x05, 0x06)),
+        Signature(part(0x50, 0x4B, 0x07, 0x08)),
+    )
+
+    private val OLE2_SIGNATURES = listOf(
+        Signature(part(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte())),
+    )
+
     private val SIGNATURES: Map<String, List<Signature>> = mapOf(
         "image/jpeg" to listOf(
             Signature(part(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())),
@@ -52,14 +65,26 @@ public object MagicBytes {
         "application/pdf" to listOf(
             Signature(part("%PDF-")),
         ),
-        "application/zip" to listOf(
-            Signature(part(0x50, 0x4B, 0x03, 0x04)),
-            Signature(part(0x50, 0x4B, 0x05, 0x06)),
-            Signature(part(0x50, 0x4B, 0x07, 0x08)),
-        ),
+        "application/zip" to ZIP_SIGNATURES,
         "application/gzip" to listOf(
             Signature(part(0x1F, 0x8B.toByte())),
         ),
+        // OLE2 compound file - the container of the legacy Office formats.
+        // Registered before the formats themselves so that detect() reports the
+        // container; the concrete format is then refined by extension, because
+        // the bytes alone genuinely cannot tell .doc from .xls.
+        OLE2 to OLE2_SIGNATURES,
+        // OOXML (.docx / .xlsx / .pptx) is a ZIP archive, so it carries the same
+        // signature as application/zip. Registering the concrete types means a
+        // declared .docx is at least verified to BE a zip container - without
+        // this, an executable declared as .docx passed unchecked, because a type
+        // with no known signature skips verification entirely.
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" to ZIP_SIGNATURES,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" to ZIP_SIGNATURES,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" to ZIP_SIGNATURES,
+        "application/msword" to OLE2_SIGNATURES,
+        "application/vnd.ms-excel" to OLE2_SIGNATURES,
+        "application/vnd.ms-powerpoint" to OLE2_SIGNATURES,
     )
 
     /** The number of leading bytes required to evaluate every known signature. */

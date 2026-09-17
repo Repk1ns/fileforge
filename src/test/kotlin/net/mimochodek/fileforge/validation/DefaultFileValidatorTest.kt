@@ -108,6 +108,35 @@ class DefaultFileValidatorTest {
     }
 
     @Nested
+    inner class OfficeDocuments {
+
+        private val office = DefaultFileValidator(
+            maxFileSize = 20 * 1024 * 1024,
+            allowedMimeTypes = listOf(DOCX, XLSX, "application/pdf"),
+        )
+
+        @Test
+        fun `should accept a docx that really is a zip container`() {
+            assertDoesNotThrow { office.validate(candidate(DOCX, Fixtures.ZIP)) }
+            assertDoesNotThrow { office.validate(candidate(XLSX, Fixtures.ZIP)) }
+        }
+
+        @Test
+        fun `should reject content declared as docx that is not even a zip`() {
+            // Before the OOXML signatures existed, these types had no signature at
+            // all, so verification was skipped and an executable declared as .docx
+            // went straight into the bucket unchecked.
+            assertThrows<ContentMismatchException> { office.validate(candidate(DOCX, Fixtures.PDF)) }
+            assertThrows<ContentMismatchException> { office.validate(candidate(XLSX, Fixtures.JPEG)) }
+        }
+
+        @Test
+        fun `should reject an office type that is not whitelisted`() {
+            assertThrows<UnsupportedFileTypeException> { office.validate(candidate(PPTX, Fixtures.ZIP)) }
+        }
+    }
+
+    @Nested
     inner class UnknownTypes {
 
         @Test
@@ -147,4 +176,10 @@ class DefaultFileValidatorTest {
 
     private fun candidate(contentType: String, head: ByteArray, size: Long = 100) =
         FileCandidate("file.bin", contentType, size, head)
+
+    private companion object {
+        const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        const val XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        const val PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    }
 }
