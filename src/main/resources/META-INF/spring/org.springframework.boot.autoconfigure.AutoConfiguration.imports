@@ -1,1 +1,2 @@
-net.mimochodek.fileforge.FileStorageAutoConfiguration
+net.mimochodek.fileforge.autoconfigure.S3StorageAutoConfiguration
+net.mimochodek.fileforge.autoconfigure.FileForgeAutoConfiguration
