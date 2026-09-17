@@ -8,6 +8,10 @@ class FileValidationService(
     private val properties: FileStorageProperties,
 ) {
 
+    /** Whitelist normalized once, not on every [validateMimeType] call. */
+    private val allowedMimeTypes: Set<String> =
+        properties.allowedMimeTypes.mapTo(HashSet()) { it.substringBefore(';').trim().lowercase() }
+
     /**
      * Validates [contentLength] and [contentType] against the configured limits
      * and verifies that the first bytes of [headBytes] match the declared type.
@@ -31,18 +35,19 @@ class FileValidationService(
 
     /** Enforces the configured MIME whitelist. */
     fun validateMimeType(contentType: String) {
-        val normalized = contentType.substringBefore(';').trim().lowercase()
-        if (normalized !in properties.allowedMimeTypes.map { it.lowercase() }) {
+        if (normalize(contentType) !in allowedMimeTypes) {
             throw UnsupportedFileTypeException(contentType)
         }
     }
 
-    /** Verifies the actual content (magic bytes) matches the declared [contentType]. */
+    /**
+     * Verifies the actual content (magic bytes) matches the declared [contentType].
+     *
+     * Content types without a known signature are not checked.
+     */
     fun validateMagicBytes(contentType: String, headBytes: ByteArray) {
-        val normalized = contentType.substringBefore(';').trim().lowercase()
-        val signatures = MAGIC_BYTES[normalized] ?: return
-        val matches = signatures.any { signature -> headBytes.startsWith(signature.bytes, signature.offset) }
-        if (!matches) {
+        val signatures = MAGIC_BYTES[normalize(contentType)] ?: return
+        if (signatures.none { it.matches(headBytes) }) {
             throw ContentMismatchException(contentType)
         }
     }
@@ -69,31 +74,48 @@ class FileValidationService(
         return sanitized
     }
 
-    private fun ByteArray.startsWith(prefix: ByteArray, offset: Int): Boolean {
-        if (size < offset + prefix.size) return false
-        return prefix.indices.all { this[offset + it] == prefix[it] }
+    private fun normalize(contentType: String): String = contentType.substringBefore(';').trim().lowercase()
+
+    /**
+     * A magic-byte signature: one or more byte sequences that must **all** match
+     * at their respective offsets for the signature to apply.
+     */
+    private class MagicSignature(private vararg val parts: Part) {
+
+        fun matches(head: ByteArray): Boolean = parts.all { part ->
+            head.size >= part.offset + part.bytes.size &&
+                part.bytes.indices.all { head[part.offset + it] == part.bytes[it] }
+        }
+
+        class Part(val bytes: ByteArray, val offset: Int = 0)
     }
 
-    private data class MagicSignature(val bytes: ByteArray, val offset: Int = 0)
-
     private companion object {
+
+        private fun part(vararg bytes: Byte) = MagicSignature.Part(bytes)
+
+        private fun part(offset: Int, ascii: String) = MagicSignature.Part(ascii.toByteArray(), offset)
+
+        private fun part(ascii: String) = MagicSignature.Part(ascii.toByteArray())
+
         val MAGIC_BYTES: Map<String, List<MagicSignature>> = mapOf(
             "image/jpeg" to listOf(
-                MagicSignature(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())),
+                MagicSignature(part(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())),
             ),
             "image/png" to listOf(
-                MagicSignature(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)),
+                MagicSignature(part(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)),
             ),
             "image/webp" to listOf(
-                // "RIFF" .... "WEBP"
-                MagicSignature("RIFF".toByteArray()),
+                // "RIFF" <4 byte little-endian size> "WEBP" - both parts are required,
+                // otherwise any RIFF container (e.g. a WAV file) would pass as a webp image.
+                MagicSignature(part("RIFF"), part(8, "WEBP")),
             ),
             "image/gif" to listOf(
-                MagicSignature("GIF87a".toByteArray()),
-                MagicSignature("GIF89a".toByteArray()),
+                MagicSignature(part("GIF87a")),
+                MagicSignature(part("GIF89a")),
             ),
             "application/pdf" to listOf(
-                MagicSignature("%PDF-".toByteArray()),
+                MagicSignature(part("%PDF-")),
             ),
         )
     }

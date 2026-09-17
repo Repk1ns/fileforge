@@ -38,11 +38,8 @@ class FileStorageAutoConfiguration {
                     AwsBasicCredentials.create(props.accessKey, props.secretKey),
                 ),
             )
-            .serviceConfiguration(
-                S3Configuration.builder()
-                    .pathStyleAccessEnabled(true)
-                    .build(),
-            )
+            // Path style must be set on exactly one of the builder or S3Configuration -
+            // configuring both makes the AWS SDK reject the client at construction time.
             .forcePathStyle(true)
             .build()
 

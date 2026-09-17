@@ -2,14 +2,11 @@ package net.mimochodek.fileforge
 
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.MethodOrderer
-import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.junit.jupiter.api.TestMethodOrder
 import org.junit.jupiter.api.assertThrows
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.wait.strategy.Wait
+import org.testcontainers.containers.wait.strategy.HttpWaitStrategy
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
@@ -23,6 +20,7 @@ import java.io.ByteArrayInputStream
 import java.net.URI
 import java.time.Duration
 import java.time.Year
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -31,23 +29,14 @@ import kotlin.test.assertTrue
  * Full round-trip integration test against a real S3-compatible endpoint
  * (`versity/versitygw`) with `forcePathStyle(true)`.
  *
+ * Every test is self-contained: it uploads its own fixture into its own folder,
+ * so tests can run in isolation and in any order.
+ *
  * Requires a running Docker daemon; the test is skipped otherwise.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class S3FileStorageServiceIntegrationTest {
-
-    private val accessKey = "testAccessKey"
-    private val secretKey = "testSecretKey"
-    private val bucket = "integration-test-bucket"
-
-    private val container = GenericContainer(DockerImageName.parse("versity/versitygw:latest"))
-        .withExposedPorts(7070)
-        .withEnv("ROOT_ACCESS_KEY", accessKey)
-        .withEnv("ROOT_SECRET_KEY", secretKey)
-        .withCommand("posix", "/tmp/vgw")
-        .waitingFor(Wait.forListeningPort())
 
     private lateinit var s3Client: S3Client
     private lateinit var s3Presigner: S3Presigner
@@ -55,32 +44,29 @@ class S3FileStorageServiceIntegrationTest {
 
     private val fileContent = "%PDF-1.7 integration test payload".toByteArray()
 
-    private lateinit var objectKey: String
-    private lateinit var archivedKey: String
-
     @BeforeAll
     fun setUp() {
         container.start()
-        val endpoint = "http://${container.host}:${container.getMappedPort(7070)}"
+        val endpoint = "http://${container.host}:${container.getMappedPort(S3_PORT)}"
         val properties = FileStorageProperties(
             endpoint = endpoint,
-            region = "us-east-1",
-            bucket = bucket,
-            accessKey = accessKey,
-            secretKey = secretKey,
+            region = REGION,
+            bucket = BUCKET,
+            accessKey = ACCESS_KEY,
+            secretKey = SECRET_KEY,
         )
         val credentials = StaticCredentialsProvider.create(
-            AwsBasicCredentials.create(accessKey, secretKey),
+            AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY),
         )
         s3Client = S3Client.builder()
             .endpointOverride(URI.create(endpoint))
-            .region(Region.of(properties.region))
+            .region(Region.of(REGION))
             .credentialsProvider(credentials)
             .forcePathStyle(true)
             .build()
         s3Presigner = S3Presigner.builder()
             .endpointOverride(URI.create(endpoint))
-            .region(Region.of(properties.region))
+            .region(Region.of(REGION))
             .credentialsProvider(credentials)
             .serviceConfiguration(
                 S3Configuration.builder()
@@ -88,7 +74,7 @@ class S3FileStorageServiceIntegrationTest {
                     .build(),
             )
             .build()
-        s3Client.createBucket(CreateBucketRequest.builder().bucket(bucket).build())
+        s3Client.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build())
         service = S3FileStorageService(s3Client, s3Presigner, properties)
     }
 
@@ -99,74 +85,126 @@ class S3FileStorageServiceIntegrationTest {
         container.stop()
     }
 
-    @Test
-    @Order(1)
-    fun `should upload object and return generated key`() {
-        objectKey = service.upload(
-            "docs/report.pdf",
+    /** Uploads the fixture into a folder unique to the calling test. */
+    private fun upload(folder: String, fileName: String = "report.pdf"): String =
+        service.upload(
+            "$folder/$fileName",
             ByteArrayInputStream(fileContent),
             fileContent.size.toLong(),
             "application/pdf",
         )
-        archivedKey = "archive/${objectKey.substringAfterLast('/')}"
+
+    private fun uniqueFolder(name: String) = "$name-${UUID.randomUUID()}"
+
+    @Test
+    fun `should upload object and return generated key`() {
+        val folder = uniqueFolder("upload")
+        val key = upload(folder)
 
         val year = Year.now().value
-        val uuidPattern = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
         assertTrue(
-            Regex("docs/${year}_$uuidPattern\\.pdf").matches(objectKey),
-            "Unexpected generated key: $objectKey",
+            Regex("$folder/${year}_$UUID_PATTERN\\.pdf").matches(key),
+            "Unexpected generated key: $key",
         )
     }
 
     @Test
-    @Order(2)
-    fun `should report uploaded object as existing`() {
-        assertTrue(service.exists(objectKey))
-        assertFalse(service.exists("docs/missing.pdf"))
+    fun `should generate a unique key per upload`() {
+        val folder = uniqueFolder("unique")
+
+        assertTrue(upload(folder) != upload(folder))
     }
 
     @Test
-    @Order(3)
+    fun `should report uploaded object as existing`() {
+        val folder = uniqueFolder("exists")
+        val key = upload(folder)
+
+        assertTrue(service.exists(key))
+        assertFalse(service.exists("$folder/missing.pdf"))
+    }
+
+    @Test
     fun `should download uploaded object`() {
-        val downloaded = service.download(objectKey).use { it.readBytes() }
+        val key = upload(uniqueFolder("download"))
+
+        val downloaded = service.download(key).use { it.readBytes() }
+
         assertEquals(fileContent.toList(), downloaded.toList())
     }
 
     @Test
-    @Order(4)
     fun `should list objects by prefix`() {
-        assertEquals(listOf(objectKey), service.list("docs/"))
-        assertTrue(service.list("nonexistent/").isEmpty())
+        val folder = uniqueFolder("list")
+        val key = upload(folder)
+
+        assertEquals(listOf(key), service.list("$folder/"))
+        assertTrue(service.list("${uniqueFolder("empty")}/").isEmpty())
     }
 
     @Test
-    @Order(5)
     fun `should presign get url`() {
-        val url = service.presignGetUrl(objectKey, Duration.ofMinutes(5))
+        val key = upload(uniqueFolder("presign"))
+
+        val url = service.presignGetUrl(key, Duration.ofMinutes(5))
+
         val downloaded = url.openStream().use { it.readBytes() }
         assertEquals(fileContent.toList(), downloaded.toList())
     }
 
     @Test
-    @Order(6)
     fun `should archive object`() {
-        service.archive(objectKey, archivedKey)
-        assertFalse(service.exists(objectKey))
+        val folder = uniqueFolder("archive")
+        val key = upload(folder)
+        val archivedKey = "$folder/archived/report.pdf"
+
+        service.archive(key, archivedKey)
+
+        assertFalse(service.exists(key))
         assertTrue(service.exists(archivedKey))
-        val downloaded = service.download(archivedKey).use { it.readBytes() }
-        assertEquals(fileContent.toList(), downloaded.toList())
+        assertEquals(fileContent.toList(), service.download(archivedKey).use { it.readBytes() }.toList())
     }
 
     @Test
-    @Order(7)
-    fun `should delete archived object`() {
-        service.delete(archivedKey)
-        assertFalse(service.exists(archivedKey))
+    fun `should delete object`() {
+        val key = upload(uniqueFolder("delete"))
+
+        service.delete(key)
+
+        assertFalse(service.exists(key))
     }
 
     @Test
-    @Order(8)
     fun `should throw when downloading missing object`() {
-        assertThrows<FileNotFoundStorageException> { service.download("does/not/exist.pdf") }
+        assertThrows<FileNotFoundStorageException> { service.download("${uniqueFolder("missing")}/nope.pdf") }
+    }
+
+    private companion object {
+        const val S3_PORT = 7070
+        const val ACCESS_KEY = "testAccessKey"
+        const val SECRET_KEY = "testSecretKey"
+        const val BUCKET = "integration-test-bucket"
+        const val REGION = "us-east-1"
+        const val UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+
+        /**
+         * Pinned image tag - `latest` would make the build non-reproducible.
+         *
+         * Readiness is probed over HTTP: an anonymous request to `/` is answered by
+         * the gateway with 403 once the S3 API is actually serving, which a plain
+         * listening-port check does not guarantee.
+         */
+        val container: GenericContainer<*> = GenericContainer(DockerImageName.parse("versity/versitygw:v1.8.0"))
+            .withExposedPorts(S3_PORT)
+            .withEnv("ROOT_ACCESS_KEY", ACCESS_KEY)
+            .withEnv("ROOT_SECRET_KEY", SECRET_KEY)
+            .withCommand("posix", "/tmp/vgw")
+            .waitingFor(
+                HttpWaitStrategy()
+                    .forPort(S3_PORT)
+                    .forPath("/")
+                    .forStatusCodeMatching { it in 200..499 }
+                    .withStartupTimeout(Duration.ofSeconds(60)),
+            )
     }
 }

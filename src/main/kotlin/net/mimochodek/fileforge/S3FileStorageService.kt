@@ -1,5 +1,6 @@
 package net.mimochodek.fileforge
 
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest
@@ -37,7 +38,7 @@ class S3FileStorageService(
             .build()
         try {
             s3Client.putObject(request, RequestBody.fromInputStream(content, contentLength))
-        } catch (e: S3Exception) {
+        } catch (e: SdkException) {
             throw FileStorageException("Failed to upload object '$generatedKey'", e)
         }
         return generatedKey
@@ -72,7 +73,7 @@ class S3FileStorageService(
             s3Client.getObject(request)
         } catch (e: NoSuchKeyException) {
             throw FileNotFoundStorageException(objectKey, e)
-        } catch (e: S3Exception) {
+        } catch (e: SdkException) {
             throw FileStorageException("Failed to download object '$objectKey'", e)
         }
     }
@@ -84,7 +85,7 @@ class S3FileStorageService(
             .build()
         try {
             s3Client.deleteObject(request)
-        } catch (e: S3Exception) {
+        } catch (e: SdkException) {
             throw FileStorageException("Failed to delete object '$objectKey'", e)
         }
     }
@@ -99,8 +100,8 @@ class S3FileStorageService(
             true
         } catch (e: NoSuchKeyException) {
             false
-        } catch (e: S3Exception) {
-            if (e.statusCode() == 404) false
+        } catch (e: SdkException) {
+            if (e is S3Exception && e.statusCode() == 404) false
             else throw FileStorageException("Failed to check existence of object '$objectKey'", e)
         }
     }
@@ -114,7 +115,7 @@ class S3FileStorageService(
             s3Client.listObjectsV2Paginator(request)
                 .contents()
                 .map { it.key() }
-        } catch (e: S3Exception) {
+        } catch (e: SdkException) {
             throw FileStorageException("Failed to list objects with prefix '$prefix'", e)
         }
     }
@@ -130,7 +131,7 @@ class S3FileStorageService(
             s3Client.copyObject(copyRequest)
         } catch (e: NoSuchKeyException) {
             throw FileNotFoundStorageException(sourceKey, e)
-        } catch (e: S3Exception) {
+        } catch (e: SdkException) {
             throw FileStorageException("Failed to archive object '$sourceKey' to '$targetKey'", e)
         }
         delete(sourceKey)
@@ -147,7 +148,7 @@ class S3FileStorageService(
             .build()
         return try {
             s3Presigner.presignGetObject(presignRequest).url()
-        } catch (e: S3Exception) {
+        } catch (e: SdkException) {
             throw FileStorageException("Failed to presign GET URL for object '$objectKey'", e)
         }
     }

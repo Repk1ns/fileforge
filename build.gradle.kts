@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "net.mimochodek"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -26,7 +26,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.5.6")
     testImplementation("org.springframework.boot:spring-boot-autoconfigure:3.5.6")
     testImplementation("io.mockk:mockk:1.13.17")
-    testImplementation(platform("org.testcontainers:testcontainers-bom:1.20.6"))
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
     testImplementation("org.testcontainers:testcontainers")
     testImplementation("org.testcontainers:junit-jupiter")
 }
@@ -41,6 +41,14 @@ java {
 
 tasks.test {
     useJUnitPlatform()
+
+    // docker-java negotiates Docker API v1.32 by default, which Docker Engine 29+
+    // rejects (its minimum is v1.40). Pin a version supported by both old and new
+    // engines so the Testcontainers integration tests are not silently skipped.
+    systemProperty(
+        "api.version",
+        providers.gradleProperty("dockerApiVersion").getOrElse("1.43"),
+    )
 }
 
 

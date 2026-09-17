@@ -1,4 +1,4 @@
-# file-storage-spring-boot-starter
+# FileForge
 
 A reusable Spring Boot auto-configuration library (starter) that abstracts file
 storage over any S3-compatible backend (versitygw, AWS S3, Cloudflare R2, MinIO,
@@ -12,36 +12,12 @@ LocalStack, ...). It is a **plain library JAR** — no `main()`, no
 
 ## Adding the dependency
 
-The artifact is published to **GitHub Packages**, which requires authentication
-even for public packages.
-
-### 1. Configure GitHub Packages credentials
-
-Add to `~/.gradle/gradle.properties` (or use env vars):
-
-```properties
-gpr.user=<your-github-username>
-gpr.token=<a personal access token with read:packages>
-```
-
-### 2. Add the repository and dependency
-
-`build.gradle.kts` of the consuming application:
+The artifact is published to **Maven Central** - no repository declaration and
+no credentials are needed.
 
 ```kotlin
-repositories {
-    mavenCentral()
-    maven {
-        url = uri("https://maven.pkg.github.com/Repk1ns/fileforge")
-        credentials {
-            username = System.getenv("GITHUB_ACTOR") ?: project.findProperty("gpr.user") as String?
-            password = System.getenv("GITHUB_TOKEN") ?: project.findProperty("gpr.token") as String?
-        }
-    }
-}
-
 dependencies {
-    implementation("net.mimochodek:file-storage-spring-boot-starter:1.0.0")
+    implementation("net.mimochodek:fileforge:1.0.1")
 }
 ```
 
@@ -126,20 +102,18 @@ same type — the library backs off thanks to `@ConditionalOnMissingBean`.
 # Publish to the local Maven repository (~/.m2) for local consumption
 ./gradlew publishToMavenLocal
 
-# Publish to GitHub Packages (needs GITHUB_ACTOR / GITHUB_TOKEN or gpr.user / gpr.token)
-./gradlew publish
+# Publish to Maven Central (needs MAVEN_CENTRAL_* and GPG credentials)
+./gradlew publishAggregationToCentralPortal
 ```
 
 ## Releasing
 
-Publishing to GitHub Packages is done automatically by GitHub Actions whenever a
-tag in the `vMAJOR.MINOR.PATCH` format (e.g. `v1.0.0`) is pushed:
+`.github/workflows/publish.yml` publishes to Maven Central when a **GitHub
+Release is published** — pushing a tag on its own does not trigger it:
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+1. Bump `version` in `build.gradle.kts` and merge it.
+2. Create a GitHub Release for the matching `vMAJOR.MINOR.PATCH` tag and publish it.
 
-Keep the `version` in `build.gradle.kts` in sync with the tag — the published
-Maven artifact version comes from `build.gradle.kts`, not from the tag. Each
-version can be published only once, so bump it for every release.
+The published Maven artifact version comes from `build.gradle.kts`, not from the
+tag, so the two must be kept in sync. Each version can be published only once,
+so bump it for every release.

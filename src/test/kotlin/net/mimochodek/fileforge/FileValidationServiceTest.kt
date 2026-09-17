@@ -15,7 +15,7 @@ class FileValidationServiceTest {
         accessKey = "access",
         secretKey = "secret",
         maxFileSizeBytes = 1_000,
-        allowedMimeTypes = listOf("image/jpeg", "image/png", "application/pdf"),
+        allowedMimeTypes = listOf("image/jpeg", "image/PNG", "application/pdf", "image/webp"),
     )
 
     private val service = FileValidationService(properties)
@@ -23,6 +23,12 @@ class FileValidationServiceTest {
     private val jpegBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
     private val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
     private val pdfBytes = "%PDF-1.7".toByteArray()
+
+    /** "RIFF" + 4 size bytes + "WEBP" */
+    private val webpBytes = "RIFF".toByteArray() + byteArrayOf(0x20, 0, 0, 0) + "WEBP".toByteArray()
+
+    /** "RIFF" + 4 size bytes + "WAVE" - a RIFF container that is not a webp image. */
+    private val wavBytes = "RIFF".toByteArray() + byteArrayOf(0x20, 0, 0, 0) + "WAVE".toByteArray()
 
     @Nested
     inner class SizeLimit {
@@ -52,6 +58,11 @@ class FileValidationServiceTest {
         }
 
         @Test
+        fun `should accept whitelisted mime type declared in mixed case`() {
+            assertDoesNotThrow { service.validateMimeType("IMAGE/png") }
+        }
+
+        @Test
         fun `should reject mime type outside whitelist`() {
             assertThrows<UnsupportedFileTypeException> { service.validateMimeType("application/zip") }
         }
@@ -73,6 +84,26 @@ class FileValidationServiceTest {
         @Test
         fun `should accept pdf content declared as pdf`() {
             assertDoesNotThrow { service.validateMagicBytes("application/pdf", pdfBytes) }
+        }
+
+        @Test
+        fun `should accept webp content declared as webp`() {
+            assertDoesNotThrow { service.validateMagicBytes("image/webp", webpBytes) }
+        }
+
+        @Test
+        fun `should reject a wav file declared as webp`() {
+            assertThrows<ContentMismatchException> { service.validateMagicBytes("image/webp", wavBytes) }
+        }
+
+        @Test
+        fun `should reject webp truncated before the WEBP marker`() {
+            assertThrows<ContentMismatchException> { service.validateMagicBytes("image/webp", "RIFF".toByteArray()) }
+        }
+
+        @Test
+        fun `should skip verification for a type without a known signature`() {
+            assertDoesNotThrow { service.validateMagicBytes("application/zip", byteArrayOf(1, 2, 3)) }
         }
 
         @Test
