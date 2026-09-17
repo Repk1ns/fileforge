@@ -1,6 +1,7 @@
 package net.mimochodek.fileforge.autoconfigure
 
 import net.mimochodek.fileforge.DefaultFileStorage
+import net.mimochodek.fileforge.FileStorage
 import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.spi.ObjectKeyGenerator
@@ -53,7 +54,7 @@ public class FileForgeAutoConfiguration {
         keyGenerator: ObjectKeyGenerator,
         validator: FileValidator,
         properties: FileForgeProperties,
-    ): DefaultFileStorage = DefaultFileStorage(
+    ): FileStorage = DefaultFileStorage(
         backend = backend,
         keyGenerator = keyGenerator,
         validator = validator,

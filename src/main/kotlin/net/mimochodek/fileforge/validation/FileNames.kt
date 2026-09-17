@@ -1,6 +1,6 @@
 package net.mimochodek.fileforge.validation
 
-import net.mimochodek.fileforge.InvalidFileNameException
+import net.mimochodek.fileforge.exception.InvalidFileNameException
 
 /** File-name sanitization, shared by every backend. */
 public object FileNames {

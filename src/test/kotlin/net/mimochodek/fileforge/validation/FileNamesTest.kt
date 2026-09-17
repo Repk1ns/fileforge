@@ -1,6 +1,6 @@
 package net.mimochodek.fileforge.validation
 
-import net.mimochodek.fileforge.InvalidFileNameException
+import net.mimochodek.fileforge.exception.InvalidFileNameException
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals

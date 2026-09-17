@@ -25,11 +25,28 @@ public class FileForgeProperties(
     public val naming: NamingProperties = NamingProperties(),
     public val validation: ValidationProperties = ValidationProperties(),
     public val buffering: BufferingProperties = BufferingProperties(),
+    public val web: WebProperties = WebProperties(),
 ) {
     public companion object {
         public const val PROVIDER_S3: String = "s3"
     }
 }
+
+/** Optional Spring MVC integration - `fileforge.web`. */
+public class WebProperties(
+    public val problemDetails: ProblemDetailsProperties = ProblemDetailsProperties(),
+)
+
+/**
+ * RFC 7807 error responses - `fileforge.web.problem-details`.
+ *
+ * Off by default: a library should not silently take over a consumer's error
+ * handling. Turning it on replaces the `@RestControllerAdvice` that every
+ * consuming application would otherwise write.
+ */
+public class ProblemDetailsProperties(
+    public val enabled: Boolean = false,
+)
 
 /** How object keys are built - `fileforge.naming`. */
 public class NamingProperties(

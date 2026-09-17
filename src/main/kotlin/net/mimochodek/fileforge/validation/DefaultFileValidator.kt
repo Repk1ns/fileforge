@@ -1,8 +1,8 @@
 package net.mimochodek.fileforge.validation
 
-import net.mimochodek.fileforge.ContentMismatchException
-import net.mimochodek.fileforge.FileSizeExceededException
-import net.mimochodek.fileforge.UnsupportedFileTypeException
+import net.mimochodek.fileforge.exception.ContentMismatchException
+import net.mimochodek.fileforge.exception.FileSizeExceededException
+import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.spi.FileCandidate
 import net.mimochodek.fileforge.spi.FileValidator
 
@@ -46,7 +46,7 @@ public class DefaultFileValidator(
     /** @throws UnsupportedFileTypeException when [contentType] is not whitelisted. */
     public fun validateMimeType(contentType: String) {
         if (ContentTypeDetector.normalize(contentType) !in allowed) {
-            throw UnsupportedFileTypeException(contentType)
+            throw UnsupportedFileTypeException(contentType, allowed)
         }
     }
 
@@ -59,12 +59,12 @@ public class DefaultFileValidator(
         val normalized = ContentTypeDetector.normalize(contentType)
         if (!MagicBytes.isKnown(normalized)) {
             if (unknownTypePolicy == UnknownTypePolicy.REJECT) {
-                throw ContentMismatchException(contentType)
+                throw ContentMismatchException(contentType, MagicBytes.detect(head))
             }
             return
         }
         if (!MagicBytes.matches(normalized, head)) {
-            throw ContentMismatchException(contentType)
+            throw ContentMismatchException(contentType, MagicBytes.detect(head))
         }
     }
 }

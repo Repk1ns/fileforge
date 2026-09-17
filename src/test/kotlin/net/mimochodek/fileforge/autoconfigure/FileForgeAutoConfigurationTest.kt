@@ -2,6 +2,7 @@ package net.mimochodek.fileforge.autoconfigure
 
 import io.mockk.mockk
 import net.mimochodek.fileforge.DefaultFileStorage
+import net.mimochodek.fileforge.FileStorage
 import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.spi.ObjectKeyGenerator
@@ -46,7 +47,7 @@ class FileForgeAutoConfigurationTest {
             context.startupFailure?.let { throw it }
 
             assertEquals(1, context.getBeanNamesForType(StorageBackend::class.java).size)
-            assertEquals(1, context.getBeanNamesForType(DefaultFileStorage::class.java).size)
+            assertEquals(1, context.getBeanNamesForType(FileStorage::class.java).size)
             assertEquals(1, context.getBeanNamesForType(ObjectKeyGenerator::class.java).size)
             assertEquals(1, context.getBeanNamesForType(FileValidator::class.java).size)
             assertEquals("s3", context.getBean(StorageBackend::class.java).providerName)
@@ -105,7 +106,7 @@ class FileForgeAutoConfigurationTest {
         ).run { context ->
             assertTrue(context.getBeanNamesForType(StorageBackend::class.java).isEmpty())
             assertTrue(
-                context.getBeanNamesForType(DefaultFileStorage::class.java).isEmpty(),
+                context.getBeanNamesForType(FileStorage::class.java).isEmpty(),
                 "the pipeline must not be published without a backend",
             )
         }
@@ -207,7 +208,7 @@ class FileForgeAutoConfigurationTest {
             context.startupFailure?.let { throw it }
 
             assertSame(CustomBackend.backend, context.getBean(StorageBackend::class.java))
-            assertEquals(1, context.getBeanNamesForType(DefaultFileStorage::class.java).size)
+            assertEquals(1, context.getBeanNamesForType(FileStorage::class.java).size)
             // No fileforge.s3.bucket needed - the S3 backend never gets built.
             assertTrue(context.getBeanNamesForType(S3Properties::class.java).isEmpty())
         }
@@ -222,12 +223,12 @@ class FileForgeAutoConfigurationTest {
 
                 assertSame(CustomPolicy.keyGenerator, context.getBean(ObjectKeyGenerator::class.java))
                 assertSame(CustomPolicy.validator, context.getBean(FileValidator::class.java))
-                assertSame(CustomPolicy.storage, context.getBean(DefaultFileStorage::class.java))
+                assertSame(CustomPolicy.storage, context.getBean(FileStorage::class.java))
             }
     }
 
     @Test
-    fun `should register both auto-configurations in the imports file`() {
+    fun `should register every auto-configuration in the imports file`() {
         val imports = javaClass
             .getResourceAsStream("/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports")
             ?.use { it.readBytes().decodeToString() }
@@ -237,6 +238,7 @@ class FileForgeAutoConfigurationTest {
             listOf(
                 S3StorageAutoConfiguration::class.java.name,
                 FileForgeAutoConfiguration::class.java.name,
+                FileForgeWebAutoConfiguration::class.java.name,
             ),
             imports.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") },
         )
@@ -263,12 +265,12 @@ class FileForgeAutoConfigurationTest {
         fun fileValidator(): FileValidator = validator
 
         @Bean
-        fun defaultFileStorage(): DefaultFileStorage = storage
+        fun fileStorage(): FileStorage = storage
 
         companion object {
             val keyGenerator: ObjectKeyGenerator = ObjectKeyGenerator { "fixed-key" }
             val validator: FileValidator = FileValidator { }
-            val storage: DefaultFileStorage = mockk()
+            val storage: FileStorage = mockk()
         }
     }
 }

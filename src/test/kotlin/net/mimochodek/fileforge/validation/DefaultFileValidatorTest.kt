@@ -1,8 +1,8 @@
 package net.mimochodek.fileforge.validation
 
-import net.mimochodek.fileforge.ContentMismatchException
-import net.mimochodek.fileforge.FileSizeExceededException
-import net.mimochodek.fileforge.UnsupportedFileTypeException
+import net.mimochodek.fileforge.exception.ContentMismatchException
+import net.mimochodek.fileforge.exception.FileSizeExceededException
+import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.spi.FileCandidate
 import net.mimochodek.fileforge.testsupport.Fixtures
 import org.junit.jupiter.api.Nested

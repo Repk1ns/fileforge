@@ -1,6 +1,6 @@
 package net.mimochodek.fileforge.testsupport
 
-import net.mimochodek.fileforge.FileNotFoundStorageException
+import net.mimochodek.fileforge.exception.FileNotFoundStorageException
 import net.mimochodek.fileforge.model.FileContent
 import net.mimochodek.fileforge.model.FileMetadata
 import net.mimochodek.fileforge.model.FilePage

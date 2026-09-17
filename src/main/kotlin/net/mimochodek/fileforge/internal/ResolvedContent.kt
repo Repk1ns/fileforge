@@ -1,7 +1,7 @@
 package net.mimochodek.fileforge.internal
 
-import net.mimochodek.fileforge.FileSizeExceededException
-import net.mimochodek.fileforge.FileStorageException
+import net.mimochodek.fileforge.exception.FileSizeExceededException
+import net.mimochodek.fileforge.exception.FileStorageException
 import net.mimochodek.fileforge.model.ContentSource
 import java.io.ByteArrayInputStream
 import java.io.Closeable

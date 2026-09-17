@@ -1,13 +1,16 @@
 package net.mimochodek.fileforge.internal.s3
 
-import net.mimochodek.fileforge.FileNotFoundStorageException
-import net.mimochodek.fileforge.FileStorageException
+import net.mimochodek.fileforge.exception.FileNotFoundStorageException
+import net.mimochodek.fileforge.exception.FileStorageException
+import net.mimochodek.fileforge.exception.StorageUnavailableException
 import net.mimochodek.fileforge.model.FileContent
 import net.mimochodek.fileforge.model.FileMetadata
 import net.mimochodek.fileforge.model.FilePage
 import net.mimochodek.fileforge.spi.BackendPutRequest
 import net.mimochodek.fileforge.spi.BackendPutResult
 import net.mimochodek.fileforge.spi.StorageBackend
+import org.slf4j.LoggerFactory
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
@@ -147,6 +150,7 @@ internal class S3StorageBackend(
         val source = headObject(sourceKey)
         val size = source.contentLength() ?: 0L
         if (size > MAX_SINGLE_PART_COPY) {
+            log.debug("Copying {} ({} bytes) via multipart; a single-part copy is capped at 5 GiB", sourceKey, size)
             multipartCopy(sourceKey, targetKey, size, source.contentType())
             return
         }
@@ -291,9 +295,24 @@ internal class S3StorageBackend(
             throw mapped(action, e)
         }
 
-    private fun mapped(action: String, e: SdkException) = FileStorageException("Failed to $action", e)
+    /**
+     * A failure with no HTTP response behind it - connection refused, DNS
+     * failure, socket timeout - is the backend being unreachable rather than a
+     * storage error, and is worth a distinct type: it is retryable and maps to a
+     * different HTTP status.
+     */
+    private fun mapped(action: String, e: SdkException): FileStorageException {
+        log.debug("S3 call failed: {}", action, e)
+        return if (e is SdkClientException) {
+            StorageUnavailableException("Storage is unreachable while trying to $action", e)
+        } else {
+            FileStorageException("Failed to $action", e)
+        }
+    }
 
     private companion object {
+        val log = LoggerFactory.getLogger(S3StorageBackend::class.java)
+
         const val DEFAULT_CONTENT_TYPE = "application/octet-stream"
 
         /**

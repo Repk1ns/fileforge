@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "net.mimochodek"
-version = "1.0.1"
+version = "2.0.0"
 
 repositories {
     mavenCentral()
@@ -19,12 +19,23 @@ dependencies {
     api(platform("software.amazon.awssdk:bom:2.30.1"))
     api("software.amazon.awssdk:s3")
 
+    implementation("org.slf4j:slf4j-api:2.0.16")
+
     compileOnly("org.springframework.boot:spring-boot-autoconfigure:3.5.6")
+    // Optional Spring MVC integration (MultipartFile extension, ProblemDetail
+    // handler): compile-only, so nothing is forced onto the runtime classpath
+    // and the library stays usable outside a web application.
+    compileOnly("org.springframework:spring-web:6.2.11")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor:3.5.6")
 
     testImplementation(kotlin("test"))
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.5.6")
     testImplementation("org.springframework.boot:spring-boot-autoconfigure:3.5.6")
+    testImplementation("org.springframework:spring-web:6.2.11")
+    // Needed to exercise the optional web integration: @ConditionalOnWebApplication
+    // cannot be evaluated without the servlet API on the classpath.
+    testImplementation("org.springframework:spring-webmvc:6.2.11")
+    testImplementation("jakarta.servlet:jakarta.servlet-api:6.1.0")
     testImplementation("io.mockk:mockk:1.13.17")
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.3"))
     testImplementation("org.testcontainers:testcontainers")

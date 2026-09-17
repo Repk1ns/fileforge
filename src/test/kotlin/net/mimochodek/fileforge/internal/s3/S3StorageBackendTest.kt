@@ -4,8 +4,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import net.mimochodek.fileforge.FileNotFoundStorageException
-import net.mimochodek.fileforge.FileStorageException
+import net.mimochodek.fileforge.exception.FileNotFoundStorageException
+import net.mimochodek.fileforge.exception.FileStorageException
 import net.mimochodek.fileforge.spi.BackendPutRequest
 import net.mimochodek.fileforge.testsupport.Fixtures
 import org.junit.jupiter.api.Nested

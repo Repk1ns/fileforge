@@ -34,14 +34,14 @@ public interface StorageBackend {
     /**
      * Opens the object stored under [key].
      *
-     * @throws net.mimochodek.fileforge.FileNotFoundStorageException when absent.
+     * @throws net.mimochodek.fileforge.exception.FileNotFoundStorageException when absent.
      */
     public fun get(key: String): FileContent
 
     /**
      * Reads the metadata of [key] without transferring content.
      *
-     * @throws net.mimochodek.fileforge.FileNotFoundStorageException when absent.
+     * @throws net.mimochodek.fileforge.exception.FileNotFoundStorageException when absent.
      */
     public fun head(key: String): FileMetadata
 

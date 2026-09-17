@@ -15,21 +15,21 @@ import net.mimochodek.fileforge.spi.ObjectKeyRequest
 import net.mimochodek.fileforge.spi.StorageBackend
 import net.mimochodek.fileforge.validation.ContentTypeDetector
 import net.mimochodek.fileforge.validation.FileNames
+import org.slf4j.LoggerFactory
 import java.net.URI
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
 
 /**
- * The storage-agnostic pipeline that sits between consumers and a
- * [StorageBackend]: **sanitize -> resolve -> validate -> generate key -> delegate**.
+ * The storage-agnostic pipeline between [FileStorage] and a [StorageBackend]:
+ * **sanitize -> resolve -> validate -> generate key -> delegate**.
  *
  * Every step above the backend is shared by all backends, which is what makes
  * two things true at once: a new backend is a handful of trivial methods, and
- * validation can never be skipped. There is no code path that writes
- * unvalidated content, and no path that trusts a caller's claimed size - the
- * content is resolved to a known length first, and that length is what gets
- * enforced and recorded.
+ * validation can never be skipped. No path writes unvalidated content, and no
+ * path trusts a caller's claimed size - the content is resolved to a known
+ * length first, and that length is what gets enforced and recorded.
  */
 public class DefaultFileStorage(
     private val backend: StorageBackend,
@@ -38,12 +38,10 @@ public class DefaultFileStorage(
     private val maxFileSize: Long,
     private val inMemoryThreshold: Long = DEFAULT_IN_MEMORY_THRESHOLD,
     private val tempDir: Path? = null,
-    private val defaultTtl: Duration = DEFAULT_TTL,
     private val clock: Clock = Clock.systemUTC(),
-) {
+) : FileStorage {
 
-    /** Stores [upload], validating it first. */
-    public fun store(upload: FileUpload): StoredFile {
+    override fun store(upload: FileUpload): StoredFile {
         val fileName = FileNames.sanitize(upload.fileName)
 
         return resolveContent(upload.content, maxFileSize, inMemoryThreshold, tempDir).use { content ->
@@ -74,6 +72,15 @@ public class DefaultFileStorage(
                 )
             }
 
+            log.debug(
+                "Stored '{}' as {} ({}, {} bytes) via {}",
+                fileName,
+                key,
+                contentType,
+                result.size,
+                backend.providerName,
+            )
+
             StoredFile(
                 key = key,
                 fileName = fileName,
@@ -85,88 +92,69 @@ public class DefaultFileStorage(
         }
     }
 
-    /** Stores [bytes] under [fileName]. */
-    @JvmOverloads
-    public fun store(
-        fileName: String,
-        bytes: ByteArray,
-        contentType: String? = null,
-        folder: String = "",
-    ): StoredFile = store(FileUpload(fileName, ContentSource.Bytes(bytes), contentType, folder))
+    override fun store(fileName: String, bytes: ByteArray, contentType: String?, folder: String): StoredFile =
+        store(FileUpload(fileName, ContentSource.Bytes(bytes), contentType, folder))
 
-    /**
-     * Opens the object under [key].
-     *
-     * The returned value holds a backend connection and must be closed; prefer
-     * the scoped overload below.
-     */
-    public fun read(key: String): FileContent = backend.get(key)
+    override fun read(key: String): FileContent {
+        log.debug("Reading {}", key)
+        return backend.get(key)
+    }
 
-    /** Opens the object under [key], passes it to [block] and always closes it. */
-    public fun <T> read(key: String, block: (FileContent) -> T): T = backend.get(key).use(block)
+    override fun <T> read(key: String, block: (FileContent) -> T): T = read(key).use(block)
 
-    /** Reads the whole object under [key] into memory. */
-    public fun readBytes(key: String): ByteArray = read(key) { it.stream.readBytes() }
+    override fun readBytes(key: String): ByteArray = read(key) { it.stream.readBytes() }
 
-    /** Reads the metadata of [key] without transferring content. */
-    public fun metadata(key: String): FileMetadata = backend.head(key)
+    override fun metadata(key: String): FileMetadata = backend.head(key)
 
-    /** Returns `true` when an object exists under [key]. */
-    public fun exists(key: String): Boolean = backend.exists(key)
+    override fun exists(key: String): Boolean = backend.exists(key)
 
-    /** Deletes [key]. Idempotent; returns `true` when the object existed. */
-    public fun delete(key: String): Boolean = backend.delete(key)
+    override fun delete(key: String): Boolean {
+        val existed = backend.delete(key)
+        log.debug("Deleted {} (existed: {})", key, existed)
+        return existed
+    }
 
-    /** Deletes every key in [keys], batched by the backend. */
-    public fun deleteAll(keys: Collection<String>) {
+    override fun deleteAll(keys: Collection<String>) {
         backend.deleteAll(keys)
+        log.debug("Deleted {} objects", keys.size)
     }
 
-    /** Copies [from] to [to], leaving the source in place. */
-    public fun copy(from: String, to: String) {
+    override fun copy(from: String, to: String) {
         backend.copy(from, to)
+        log.debug("Copied {} to {}", from, to)
     }
 
-    /**
-     * Moves [from] to [to] (copy, then delete the source).
-     *
-     * Not atomic: the copy and the delete are separate backend calls, so a
-     * failure between them leaves both keys present. The source is only deleted
-     * after the copy succeeds, so the object is never lost.
-     */
-    public fun move(from: String, to: String) {
+    override fun move(from: String, to: String) {
         backend.copy(from, to)
-        backend.delete(from)
+        try {
+            backend.delete(from)
+        } catch (e: RuntimeException) {
+            // The copy succeeded, so the object is not lost - but both keys now
+            // exist, and the caller believes only the target does.
+            log.warn(
+                "Moved {} to {} but could not delete the source; both keys now exist",
+                from,
+                to,
+                e,
+            )
+            throw e
+        }
+        log.debug("Moved {} to {}", from, to)
     }
 
-    /** Returns one page of at most [limit] keys under [prefix]. */
-    @JvmOverloads
-    public fun list(prefix: String, limit: Int = DEFAULT_PAGE_SIZE, pageToken: String? = null): FilePage =
+    override fun list(prefix: String, limit: Int, pageToken: String?): FilePage =
         backend.list(prefix, limit, pageToken)
 
-    /**
-     * A temporary read URL for [key].
-     *
-     * @param downloadAs when set, the browser downloads the object under this
-     *   file name instead of the opaque generated key.
-     */
-    @JvmOverloads
-    public fun downloadUrl(key: String, ttl: Duration = defaultTtl, downloadAs: String? = null): URI =
+    override fun downloadUrl(key: String, ttl: Duration, downloadAs: String?): URI =
         backend.presignGet(key, ttl, downloadAs)
 
-    /** A temporary write URL for [key], for direct browser-to-storage uploads. */
-    @JvmOverloads
-    public fun uploadUrl(key: String, contentType: String, ttl: Duration = defaultTtl): URI =
+    override fun uploadUrl(key: String, contentType: String, ttl: Duration): URI =
         backend.presignPut(key, contentType, ttl)
 
     public companion object {
         /** Streams up to this size are buffered in memory; larger ones spill to disk. */
         public const val DEFAULT_IN_MEMORY_THRESHOLD: Long = 1024L * 1024
 
-        /** Default validity of presigned URLs. */
-        public val DEFAULT_TTL: Duration = Duration.ofMinutes(15)
-
-        /** Default page size for [list]. */
-        public const val DEFAULT_PAGE_SIZE: Int = 1000
+        private val log = LoggerFactory.getLogger(DefaultFileStorage::class.java)
     }
 }

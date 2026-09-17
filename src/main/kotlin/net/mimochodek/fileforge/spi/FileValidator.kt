@@ -10,7 +10,7 @@ package net.mimochodek.fileforge.spi
 public fun interface FileValidator {
 
     /**
-     * @throws net.mimochodek.fileforge.FileStorageException when [candidate]
+     * @throws net.mimochodek.fileforge.exception.FileStorageException when [candidate]
      *   violates the configured policy.
      */
     public fun validate(candidate: FileCandidate)
