@@ -1,0 +1,196 @@
+{
+  "groups": [
+    {
+      "name": "fileforge",
+      "type": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties"
+    },
+    {
+      "name": "fileforge.naming",
+      "type": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "sourceMethod": "getNaming()"
+    },
+    {
+      "name": "fileforge.validation",
+      "type": "net.mimochodek.fileforge.autoconfigure.ValidationProperties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "sourceMethod": "getValidation()"
+    },
+    {
+      "name": "fileforge.buffering",
+      "type": "net.mimochodek.fileforge.autoconfigure.BufferingProperties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "sourceMethod": "getBuffering()"
+    },
+    {
+      "name": "fileforge.web",
+      "type": "net.mimochodek.fileforge.autoconfigure.WebProperties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "sourceMethod": "getWeb()"
+    },
+    {
+      "name": "fileforge.web.problem-details",
+      "type": "net.mimochodek.fileforge.autoconfigure.ProblemDetailsProperties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.WebProperties",
+      "sourceMethod": "getProblemDetails()"
+    },
+    {
+      "name": "fileforge.s3",
+      "type": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "fileforge.provider",
+      "type": "java.lang.String",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.FileForgeProperties",
+      "description": "Storage backend to activate. 's3' is the only implementation shipped today; any other value leaves FileForge inactive while keeping the dependency.",
+      "defaultValue": "s3"
+    },
+    {
+      "name": "fileforge.naming.strategy",
+      "type": "net.mimochodek.fileforge.naming.NamingStrategy",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
+      "description": "Object key layout. date-uuid: documents/2026/09/17/<uuid>.pdf. uuid: documents/<uuid>.pdf. year-uuid: the 1.x layout, documents/2026_<uuid>.pdf.",
+      "defaultValue": "date-uuid"
+    },
+    {
+      "name": "fileforge.naming.keep-extension",
+      "type": "java.lang.Boolean",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
+      "description": "Whether the generated key keeps the original file extension.",
+      "defaultValue": true
+    },
+    {
+      "name": "fileforge.naming.zone",
+      "type": "java.time.ZoneId",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
+      "description": "Time zone the date path is derived in. Pinned rather than following the system default, so keys are reproducible across hosts.",
+      "defaultValue": "Z"
+    },
+    {
+      "name": "fileforge.validation.max-file-size",
+      "type": "org.springframework.util.unit.DataSize",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.ValidationProperties",
+      "description": "Maximum allowed file size, enforced against the measured content rather than a caller's claim.",
+      "defaultValue": "50MB"
+    },
+    {
+      "name": "fileforge.validation.allowed-mime-types",
+      "type": "java.util.List<java.lang.String>",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.ValidationProperties",
+      "description": "Whitelist of allowed MIME types. Must not be empty.",
+      "defaultValue": [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "application/pdf"
+      ]
+    },
+    {
+      "name": "fileforge.validation.verify-magic-bytes",
+      "type": "java.lang.Boolean",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.ValidationProperties",
+      "description": "Whether file content must match its declared content type.",
+      "defaultValue": true
+    },
+    {
+      "name": "fileforge.validation.unknown-type-policy",
+      "type": "net.mimochodek.fileforge.validation.UnknownTypePolicy",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.ValidationProperties",
+      "description": "What to do with a whitelisted content type that has no known magic-byte signature and therefore cannot be verified. allow: accept it. reject: store only content the library can verify.",
+      "defaultValue": "allow"
+    },
+    {
+      "name": "fileforge.buffering.in-memory-threshold",
+      "type": "org.springframework.util.unit.DataSize",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.BufferingProperties",
+      "description": "Uploads up to this size are buffered in memory to establish their real length; larger ones spill to a temporary file.",
+      "defaultValue": "1MB"
+    },
+    {
+      "name": "fileforge.buffering.temp-dir",
+      "type": "java.nio.file.Path",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.BufferingProperties",
+      "description": "Where to spill uploads larger than the in-memory threshold. Defaults to the JVM temporary directory."
+    },
+    {
+      "name": "fileforge.web.problem-details.enabled",
+      "type": "java.lang.Boolean",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.ProblemDetailsProperties",
+      "description": "Whether to publish a @RestControllerAdvice mapping FileForge exceptions to RFC 7807 ProblemDetail responses. Off by default so the library does not take over a consumer's error handling.",
+      "defaultValue": false
+    },
+    {
+      "name": "fileforge.s3.bucket",
+      "type": "java.lang.String",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "description": "Bucket used by the consuming application. Required."
+    },
+    {
+      "name": "fileforge.s3.region",
+      "type": "java.lang.String",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "description": "S3 region.",
+      "defaultValue": "us-east-1"
+    },
+    {
+      "name": "fileforge.s3.endpoint",
+      "type": "java.net.URI",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "description": "S3-compatible endpoint, e.g. http://nas:7070. Omit it to talk to real AWS S3."
+    },
+    {
+      "name": "fileforge.s3.access-key",
+      "type": "java.lang.String",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "description": "Access key. Omit it, together with the secret key, to use the AWS default credential chain (IAM roles, instance profiles, SSO, environment)."
+    },
+    {
+      "name": "fileforge.s3.secret-key",
+      "type": "java.lang.String",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "description": "Secret key. Must be set together with the access key."
+    },
+    {
+      "name": "fileforge.s3.path-style-access",
+      "type": "java.lang.Boolean",
+      "sourceType": "net.mimochodek.fileforge.autoconfigure.S3Properties",
+      "description": "Path-style addressing. True suits self-hosted gateways; set false for real AWS S3.",
+      "defaultValue": true
+    }
+  ],
+  "hints": [
+    {
+      "name": "fileforge.provider",
+      "values": [
+        {
+          "value": "s3",
+          "description": "Any S3-compatible backend: AWS S3, versitygw, MinIO, Cloudflare R2, LocalStack."
+        }
+      ]
+    },
+    {
+      "name": "fileforge.validation.allowed-mime-types",
+      "values": [
+        {
+          "value": "image/jpeg"
+        },
+        {
+          "value": "image/png"
+        },
+        {
+          "value": "image/webp"
+        },
+        {
+          "value": "image/gif"
+        },
+        {
+          "value": "application/pdf"
+        }
+      ]
+    }
+  ]
+}

@@ -16,8 +16,11 @@ repositories {
 }
 
 dependencies {
-    api(platform("software.amazon.awssdk:bom:2.30.1"))
-    api("software.amazon.awssdk:s3")
+    // `implementation`, not `api`: the AWS SDK is an implementation detail behind
+    // the StorageBackend SPI. Exposing it on every consumer's compile classpath
+    // invited them to depend on it, and structurally undermined the abstraction.
+    implementation(platform("software.amazon.awssdk:bom:2.30.1"))
+    implementation("software.amazon.awssdk:s3")
 
     implementation("org.slf4j:slf4j-api:2.0.16")
 
@@ -26,9 +29,15 @@ dependencies {
     // handler): compile-only, so nothing is forced onto the runtime classpath
     // and the library stays usable outside a web application.
     compileOnly("org.springframework:spring-web:6.2.11")
-    annotationProcessor("org.springframework.boot:spring-boot-configuration-processor:3.5.6")
+    // No configuration processor. Kotlin never ran the 1.x `annotationProcessor`
+    // declaration, and under kapt the processor emits group entries but no
+    // properties for constructor-bound Kotlin classes - it cannot supply what it
+    // claims to. So META-INF/spring-configuration-metadata.json is maintained by
+    // hand, and ConfigurationMetadataTest asserts by reflection that it matches
+    // the properties classes exactly, which is what stops it drifting.
 
     testImplementation(kotlin("test"))
+    testImplementation(kotlin("reflect"))
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.5.6")
     testImplementation("org.springframework.boot:spring-boot-autoconfigure:3.5.6")
     testImplementation("org.springframework:spring-web:6.2.11")
@@ -42,12 +51,26 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter")
 }
 
+kotlin {
+    // For a published library this is high value: it forces explicit visibility and
+    // explicit return types on everything that is part of the public surface, so
+    // nothing leaks into it by accident.
+    explicitApi()
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
     withSourcesJar()
     withJavadocJar()
+}
+
+// `withJavadocJar()` alone packages the output of the `javadoc` task, which has no
+// Java sources here - so 1.0.0 published an empty javadoc jar despite applying
+// Dokka. Package Dokka's output instead.
+tasks.named<Jar>("javadocJar") {
+    from(tasks.named("dokkaJavadoc"))
 }
 
 tasks.test {
