@@ -115,8 +115,17 @@ public interface FileStorage {
      *
      * Always paginated, so a large bucket cannot be pulled into memory by
      * accident. Pass [FilePage.nextPageToken] back for the following page.
+     *
+     * @param delimiter set it to `"/"` for a directory-style listing: keys below
+     *   the next `/` are rolled up into [FilePage.commonPrefixes] rather than
+     *   listed individually.
      */
-    public fun list(prefix: String, limit: Int = DEFAULT_PAGE_SIZE, pageToken: String? = null): FilePage
+    public fun list(
+        prefix: String,
+        limit: Int = DEFAULT_PAGE_SIZE,
+        pageToken: String? = null,
+        delimiter: String? = null,
+    ): FilePage
 
     /**
      * A temporary URL for reading [key].

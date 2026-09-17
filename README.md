@@ -229,7 +229,15 @@ while (true) {
     page.keys.forEach(::process)
     page = storage.list("documents/", limit = 500, pageToken = page.nextPageToken ?: break)
 }
+
+// Directory-style listing of a single level
+val level = storage.list("documents/", delimiter = "/")
+level.keys            // keys directly under documents/
+level.commonPrefixes  // documents/2026/, documents/2025/, ...
 ```
+
+Uploads larger than S3's 5 GiB single-request limit are sent as a multipart
+upload automatically; nothing to configure.
 
 ### Error handling
 

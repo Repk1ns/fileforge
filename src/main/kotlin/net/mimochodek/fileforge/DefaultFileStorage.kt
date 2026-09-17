@@ -158,8 +158,8 @@ public class DefaultFileStorage(
         log.debug("Moved {} to {}", from, to)
     }
 
-    override fun list(prefix: String, limit: Int, pageToken: String?): FilePage =
-        backend.list(prefix, limit, pageToken)
+    override fun list(prefix: String, limit: Int, pageToken: String?, delimiter: String?): FilePage =
+        backend.list(prefix, limit, pageToken, delimiter)
 
     override fun downloadUrl(key: String, ttl: Duration, downloadAs: String?): URI =
         backend.presignGet(key, ttl, downloadAs)

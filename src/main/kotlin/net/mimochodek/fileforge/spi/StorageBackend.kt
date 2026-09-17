@@ -54,8 +54,14 @@ public interface StorageBackend {
     /** Deletes every key in [keys], batching where the backend supports it. */
     public fun deleteAll(keys: Collection<String>)
 
-    /** Returns one page of at most [limit] keys under [prefix], starting at [pageToken]. */
-    public fun list(prefix: String, limit: Int, pageToken: String?): FilePage
+    /**
+     * Returns one page of at most [limit] keys under [prefix], starting at [pageToken].
+     *
+     * @param delimiter when set, keys below it are rolled up into
+     *   [FilePage.commonPrefixes] instead of being listed, which is how a
+     *   directory-style listing of one level is obtained.
+     */
+    public fun list(prefix: String, limit: Int, pageToken: String?, delimiter: String?): FilePage
 
     /** Copies [sourceKey] to [targetKey], leaving the source in place. */
     public fun copy(sourceKey: String, targetKey: String)

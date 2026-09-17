@@ -86,12 +86,19 @@ class InMemoryStorageBackend : StorageBackend {
         keys.forEach { objects.remove(it) }
     }
 
-    override fun list(prefix: String, limit: Int, pageToken: String?): FilePage {
+    override fun list(prefix: String, limit: Int, pageToken: String?, delimiter: String?): FilePage {
         val matching = objects.keys.filter { it.startsWith(prefix) }.sorted()
-        val from = pageToken?.let { token -> matching.indexOfFirst { it == token } } ?: 0
-        val page = matching.drop(from).take(limit)
-        val next = matching.drop(from + limit).firstOrNull()
-        return FilePage(page, next)
+        if (delimiter == null) {
+            val from = pageToken?.let { token -> matching.indexOfFirst { it == token } } ?: 0
+            val page = matching.drop(from).take(limit)
+            return FilePage(page, matching.drop(from + limit).firstOrNull())
+        }
+        // Keys containing the delimiter past the prefix roll up into a common prefix.
+        val (nested, flat) = matching.partition { it.removePrefix(prefix).contains(delimiter) }
+        val prefixes = nested
+            .map { prefix + it.removePrefix(prefix).substringBefore(delimiter) + delimiter }
+            .distinct()
+        return FilePage(flat.take(limit), null, prefixes)
     }
 
     override fun copy(sourceKey: String, targetKey: String) {

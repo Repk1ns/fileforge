@@ -326,6 +326,19 @@ class DefaultFileStorageTest {
         }
 
         @Test
+        fun `should roll nested keys into common prefixes when a delimiter is given`() {
+            val storage = storage()
+            storage.store("report.pdf", Fixtures.PDF, folder = "docs")
+            storage.store("report.pdf", Fixtures.PDF, folder = "docs/2026")
+            storage.store("report.pdf", Fixtures.PDF, folder = "docs/2025")
+
+            val page = storage.list("docs/", delimiter = "/")
+
+            assertEquals(1, page.keys.size, "only keys at this level are listed")
+            assertEquals(listOf("docs/2025/", "docs/2026/"), page.commonPrefixes.sorted())
+        }
+
+        @Test
         fun `should report the last page`() {
             val storage = storage()
             storage.store("report.pdf", Fixtures.PDF, folder = "docs")

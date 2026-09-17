@@ -17,7 +17,14 @@ import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.http.AbortableInputStream
 import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.AbortMultipartUploadRequest
+import software.amazon.awssdk.services.s3.model.AbortMultipartUploadResponse
+import software.amazon.awssdk.services.s3.model.CommonPrefix
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest
+import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse
 import software.amazon.awssdk.services.s3.model.CopyObjectRequest
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
+import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse
 import software.amazon.awssdk.services.s3.model.CopyObjectResponse
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse
@@ -35,6 +42,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import software.amazon.awssdk.services.s3.model.S3Error
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.S3Object
+import software.amazon.awssdk.services.s3.model.UploadPartRequest
+import software.amazon.awssdk.services.s3.model.UploadPartResponse
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest
@@ -44,6 +53,7 @@ import java.io.ByteArrayInputStream
 import java.net.URI
 import java.time.Duration
 import java.time.Instant
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -106,6 +116,87 @@ class S3StorageBackendTest {
                 "Ctvrtletni+zprava.pdf",
                 requestSlot.captured.metadata()["fileforge-filename"],
             )
+        }
+
+        @Test
+        fun `should upload in parts above the single-PUT limit`() {
+            // S3 rejects a single PutObject above 5 GiB; the threshold is injected
+            // here so the multipart path is exercised without a 5 GiB fixture.
+            val large = S3StorageBackend(s3, presigner, BUCKET, multipartThreshold = 10, uploadPartSize = 4)
+            val payload = ByteArray(11) { it.toByte() }
+            val uploaded = mutableListOf<Pair<UploadPartRequest, ByteArray>>()
+
+            every { s3.createMultipartUpload(any<CreateMultipartUploadRequest>()) } returns
+                CreateMultipartUploadResponse.builder().uploadId("upload-1").build()
+            every { s3.uploadPart(any<UploadPartRequest>(), any<RequestBody>()) } answers {
+                val request = firstArg<UploadPartRequest>()
+                val body = secondArg<RequestBody>()
+                uploaded += request to body.contentStreamProvider().newStream().readBytes()
+                UploadPartResponse.builder().eTag("etag-${request.partNumber()}").build()
+            }
+            val completeSlot = slot<CompleteMultipartUploadRequest>()
+            every { s3.completeMultipartUpload(capture(completeSlot)) } returns
+                CompleteMultipartUploadResponse.builder().eTag("\"final\"").build()
+
+            val result = large.put(
+                BackendPutRequest(
+                    key = "docs/big.bin",
+                    content = ByteArrayInputStream(payload),
+                    contentLength = payload.size.toLong(),
+                    contentType = "application/octet-stream",
+                    fileName = "big.bin",
+                ),
+            )
+
+            assertEquals(listOf(4L, 4L, 3L), uploaded.map { it.first.contentLength() })
+            assertEquals(listOf(1, 2, 3), uploaded.map { it.first.partNumber() })
+            assertContentEquals(payload, uploaded.fold(ByteArray(0)) { all, part -> all + part.second })
+            assertEquals(
+                listOf(1 to "etag-1", 2 to "etag-2", 3 to "etag-3"),
+                completeSlot.captured.multipartUpload().parts().map { it.partNumber() to it.eTag() },
+            )
+            assertEquals(payload.size.toLong(), result.size)
+            assertEquals("final", result.checksum)
+            verify(exactly = 0) { s3.putObject(any<PutObjectRequest>(), any<RequestBody>()) }
+        }
+
+        @Test
+        fun `should abort a multipart upload that fails partway`() {
+            // Otherwise the orphaned parts keep costing storage indefinitely.
+            val large = S3StorageBackend(s3, presigner, BUCKET, multipartThreshold = 10, uploadPartSize = 4)
+            every { s3.createMultipartUpload(any<CreateMultipartUploadRequest>()) } returns
+                CreateMultipartUploadResponse.builder().uploadId("upload-1").build()
+            every { s3.uploadPart(any<UploadPartRequest>(), any<RequestBody>()) } throws s3Exception(500)
+            every { s3.abortMultipartUpload(any<java.util.function.Consumer<AbortMultipartUploadRequest.Builder>>()) } returns
+                AbortMultipartUploadResponse.builder().build()
+
+            assertThrows<FileStorageException> {
+                large.put(
+                    BackendPutRequest(
+                        key = "docs/big.bin",
+                        content = ByteArrayInputStream(ByteArray(11)),
+                        contentLength = 11,
+                        contentType = "application/octet-stream",
+                    ),
+                )
+            }
+
+            verify(exactly = 1) {
+                s3.abortMultipartUpload(any<java.util.function.Consumer<AbortMultipartUploadRequest.Builder>>())
+            }
+        }
+
+        @Test
+        fun `should use a single request at or below the threshold`() {
+            val large = S3StorageBackend(s3, presigner, BUCKET, multipartThreshold = 10, uploadPartSize = 4)
+            every { s3.putObject(any<PutObjectRequest>(), any<RequestBody>()) } returns
+                PutObjectResponse.builder().eTag("\"single\"").build()
+
+            large.put(
+                BackendPutRequest("k", ByteArrayInputStream(ByteArray(10)), 10, "application/octet-stream"),
+            )
+
+            verify(exactly = 0) { s3.createMultipartUpload(any<CreateMultipartUploadRequest>()) }
         }
 
         @Test
@@ -289,7 +380,7 @@ class S3StorageBackendTest {
                 .nextContinuationToken("token-2")
                 .build()
 
-            val page = backend.list("docs/", limit = 2, pageToken = "token-1")
+            val page = backend.list("docs/", limit = 2, pageToken = "token-1", delimiter = null)
 
             assertEquals(listOf("docs/a.pdf", "docs/b.pdf"), page.keys)
             assertEquals("token-2", page.nextPageToken)
@@ -305,15 +396,45 @@ class S3StorageBackendTest {
             every { s3.listObjectsV2(any<ListObjectsV2Request>()) } returns
                 ListObjectsV2Response.builder().contents(S3Object.builder().key("docs/a.pdf").build()).build()
 
-            val page = backend.list("docs/", limit = 10, pageToken = null)
+            val page = backend.list("docs/", limit = 10, pageToken = null, delimiter = null)
 
             assertNull(page.nextPageToken)
             assertFalse(page.hasMore)
         }
 
         @Test
+        fun `should roll nested keys into common prefixes when a delimiter is given`() {
+            val requestSlot = slot<ListObjectsV2Request>()
+            every { s3.listObjectsV2(capture(requestSlot)) } returns ListObjectsV2Response.builder()
+                .contents(S3Object.builder().key("docs/loose.pdf").build())
+                .commonPrefixes(
+                    CommonPrefix.builder().prefix("docs/2026/").build(),
+                    CommonPrefix.builder().prefix("docs/2025/").build(),
+                )
+                .build()
+
+            val page = backend.list("docs/", limit = 100, pageToken = null, delimiter = "/")
+
+            assertEquals("/", requestSlot.captured.delimiter())
+            assertEquals(listOf("docs/loose.pdf"), page.keys)
+            assertEquals(listOf("docs/2026/", "docs/2025/"), page.commonPrefixes)
+        }
+
+        @Test
+        fun `should report no common prefixes without a delimiter`() {
+            val requestSlot = slot<ListObjectsV2Request>()
+            every { s3.listObjectsV2(capture(requestSlot)) } returns
+                ListObjectsV2Response.builder().contents(S3Object.builder().key("docs/a.pdf").build()).build()
+
+            val page = backend.list("docs/", limit = 100, pageToken = null, delimiter = null)
+
+            assertNull(requestSlot.captured.delimiter())
+            assertTrue(page.commonPrefixes.isEmpty())
+        }
+
+        @Test
         fun `should reject a non-positive limit`() {
-            assertThrows<IllegalArgumentException> { backend.list("docs/", limit = 0, pageToken = null) }
+            assertThrows<IllegalArgumentException> { backend.list("docs/", limit = 0, pageToken = null, delimiter = null) }
         }
     }
 

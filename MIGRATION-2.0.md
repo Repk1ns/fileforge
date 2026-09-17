@@ -57,7 +57,7 @@ before deploying.
 | `download(key): InputStream` | `read(key): FileContent`, `read(key) { }`, `readBytes(key)` |
 | `delete(key)` | `delete(key): Boolean` (true if it existed) |
 | `exists(key)` | unchanged |
-| `list(prefix): List<String>` | `list(prefix, limit, pageToken): FilePage` |
+| `list(prefix): List<String>` | `list(prefix, limit, pageToken, delimiter): FilePage` |
 | `archive(from, to)` | `move(from, to)` |
 | `presignGetUrl(key, ttl): URL` | `downloadUrl(key, ttl, downloadAs): URI` |
 | — | `metadata(key)`, `copy()`, `deleteAll(keys)`, `uploadUrl(key, type, ttl)` |

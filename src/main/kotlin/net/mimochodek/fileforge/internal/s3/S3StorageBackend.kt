@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.model.UploadPartCopyRequest
+import software.amazon.awssdk.services.s3.model.UploadPartRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest
@@ -52,11 +53,26 @@ internal class S3StorageBackend(
     private val s3: S3Client,
     private val presigner: S3Presigner,
     private val bucket: String,
+    /**
+     * Uploads at or below this size go in a single PutObject. S3 rejects a
+     * single PUT above 5 GiB, so anything larger must be multipart. Injectable
+     * so the multipart path is testable without a 5 GiB fixture.
+     */
+    private val multipartThreshold: Long = MAX_SINGLE_PART_PUT,
+    private val uploadPartSize: Long = UPLOAD_PART_SIZE,
 ) : StorageBackend, AutoCloseable {
 
     override val providerName: String get() = "s3"
 
     override fun put(request: BackendPutRequest): BackendPutResult {
+        if (request.contentLength > multipartThreshold) {
+            log.debug(
+                "Uploading {} ({} bytes) via multipart; a single PutObject is capped at 5 GiB",
+                request.key,
+                request.contentLength,
+            )
+            return multipartPut(request)
+        }
         val put = PutObjectRequest.builder()
             .bucket(bucket)
             .key(request.key)
@@ -68,6 +84,67 @@ internal class S3StorageBackend(
             s3.putObject(put, RequestBody.fromInputStream(request.content, request.contentLength))
         }
         return BackendPutResult(size = request.contentLength, checksum = response.eTag().unquote())
+    }
+
+    /**
+     * Uploads in parts, because S3 rejects a single PutObject above 5 GiB.
+     *
+     * The content length is already known by the time it reaches here, so each
+     * part's length can be declared up front and the stream read exactly once.
+     */
+    private fun multipartPut(request: BackendPutRequest): BackendPutResult {
+        val uploadId = call("start multipart upload of '${request.key}'") {
+            s3.createMultipartUpload(
+                CreateMultipartUploadRequest.builder()
+                    .bucket(bucket)
+                    .key(request.key)
+                    .contentType(request.contentType)
+                    .metadata(request.s3Metadata())
+                    .build(),
+            )
+        }.uploadId()
+
+        try {
+            val parts = ArrayList<CompletedPart>()
+            var remaining = request.contentLength
+            var partNumber = 1
+            while (remaining > 0) {
+                val partLength = minOf(uploadPartSize, remaining)
+                // Bounded and non-closing: the SDK reads exactly partLength bytes
+                // and must not close the stream we still need for later parts.
+                val part = BoundedInputStream(request.content, partLength)
+                val response = call("upload part $partNumber of '${request.key}'") {
+                    s3.uploadPart(
+                        UploadPartRequest.builder()
+                            .bucket(bucket)
+                            .key(request.key)
+                            .uploadId(uploadId)
+                            .partNumber(partNumber)
+                            .contentLength(partLength)
+                            .build(),
+                        RequestBody.fromInputStream(part, partLength),
+                    )
+                }
+                parts += CompletedPart.builder().partNumber(partNumber).eTag(response.eTag()).build()
+                remaining -= partLength
+                partNumber++
+            }
+            val completed = call("complete multipart upload of '${request.key}'") {
+                s3.completeMultipartUpload(
+                    CompleteMultipartUploadRequest.builder()
+                        .bucket(bucket)
+                        .key(request.key)
+                        .uploadId(uploadId)
+                        .multipartUpload(CompletedMultipartUpload.builder().parts(parts).build())
+                        .build(),
+                )
+            }
+            return BackendPutResult(size = request.contentLength, checksum = completed.eTag().unquote())
+        } catch (e: Throwable) {
+            // Without this the incomplete parts keep costing storage indefinitely.
+            runCatching { s3.abortMultipartUpload { it.bucket(bucket).key(request.key).uploadId(uploadId) } }
+            throw e
+        }
     }
 
     override fun get(key: String): FileContent {
@@ -129,13 +206,16 @@ internal class S3StorageBackend(
         }
     }
 
-    override fun list(prefix: String, limit: Int, pageToken: String?): FilePage {
+    override fun list(prefix: String, limit: Int, pageToken: String?, delimiter: String?): FilePage {
         require(limit > 0) { "limit must be positive but was $limit" }
         val request = ListObjectsV2Request.builder()
             .bucket(bucket)
             .prefix(prefix)
             .maxKeys(limit)
-            .apply { if (pageToken != null) continuationToken(pageToken) }
+            .apply {
+                if (pageToken != null) continuationToken(pageToken)
+                if (delimiter != null) delimiter(delimiter)
+            }
             .build()
         // Deliberately a single page rather than the paginator: `.contents()` on the
         // paginator is eager, so a large bucket would materialize every key.
@@ -143,6 +223,7 @@ internal class S3StorageBackend(
         return FilePage(
             keys = response.contents().orEmpty().map { it.key() },
             nextPageToken = response.nextContinuationToken(),
+            commonPrefixes = response.commonPrefixes().orEmpty().mapNotNull { it.prefix() },
         )
     }
 
@@ -339,6 +420,15 @@ internal class S3StorageBackend(
 
         /** S3 rejects a single-part CopyObject above 5 GiB. */
         const val MAX_SINGLE_PART_COPY = 5L * 1024 * 1024 * 1024
+
+        /** S3 rejects a single PutObject above 5 GiB. */
+        const val MAX_SINGLE_PART_PUT = 5L * 1024 * 1024 * 1024
+
+        /**
+         * Part size for multipart uploads. Comfortably over S3's 5 MiB minimum
+         * part size, and 512 MiB x 10 000 parts covers any object S3 accepts.
+         */
+        const val UPLOAD_PART_SIZE = 512L * 1024 * 1024
 
         /** Part size for multipart copies; well within the 10 000 part limit. */
         const val COPY_PART_SIZE = 1024L * 1024 * 1024

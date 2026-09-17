@@ -8,6 +8,7 @@ import net.mimochodek.fileforge.internal.s3.S3StorageBackend
 import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileUpload
 import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
+import net.mimochodek.fileforge.spi.BackendPutRequest
 import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.validation.DefaultFileValidator
@@ -49,6 +50,8 @@ import kotlin.test.assertTrue
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FileForgeIntegrationTest {
 
+    private lateinit var client: S3Client
+    private lateinit var presigner: S3Presigner
     private lateinit var backend: S3StorageBackend
     private lateinit var storage: DefaultFileStorage
 
@@ -58,13 +61,13 @@ class FileForgeIntegrationTest {
         val endpoint = URI.create("http://${container.host}:${container.getMappedPort(S3_PORT)}")
         val credentials = StaticCredentialsProvider.create(AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY))
 
-        val client = S3Client.builder()
+        client = S3Client.builder()
             .endpointOverride(endpoint)
             .region(Region.of(REGION))
             .credentialsProvider(credentials)
             .forcePathStyle(true)
             .build()
-        val presigner = S3Presigner.builder()
+        presigner = S3Presigner.builder()
             .endpointOverride(endpoint)
             .region(Region.of(REGION))
             .credentialsProvider(credentials)
@@ -153,6 +156,67 @@ class FileForgeIntegrationTest {
         assertEquals(1, second.keys.size)
         assertFalse(second.hasMore)
         assertEquals(3, (first.keys + second.keys).distinct().size)
+    }
+
+    @Test
+    fun `should list one level with a delimiter`() {
+        // Exact keys, because delimiter listing is about key shape rather than
+        // about whichever layout the key generator happens to produce.
+        val folder = folder("delimiter")
+        putExactly("$folder/loose.pdf")
+        putExactly("$folder/nested/deep.pdf")
+        putExactly("$folder/other/deep.pdf")
+
+        val page = storage.list("$folder/", delimiter = "/")
+
+        assertEquals(listOf("$folder/loose.pdf"), page.keys, "only keys at this level are listed")
+        assertEquals(
+            listOf("$folder/nested/", "$folder/other/"),
+            page.commonPrefixes.sorted(),
+            "deeper keys roll up into prefixes",
+        )
+    }
+
+    /** Writes straight to the backend, bypassing key generation. */
+    private fun putExactly(key: String) {
+        backend.put(
+            BackendPutRequest(
+                key = key,
+                content = ByteArrayInputStream(Fixtures.PDF),
+                contentLength = Fixtures.PDF.size.toLong(),
+                contentType = "application/pdf",
+            ),
+        )
+    }
+
+    @Test
+    fun `should upload a large object in parts`() {
+        // S3 rejects a single PutObject above 5 GiB. Exercised here with the real
+        // 5 MiB minimum part size against a real endpoint, rather than a 5 GiB fixture.
+        val partSize = 5L * 1024 * 1024
+        val multipart = S3StorageBackend(
+            s3 = client,
+            presigner = presigner,
+            bucket = BUCKET,
+            multipartThreshold = partSize,
+            uploadPartSize = partSize,
+        )
+        val payload = Fixtures.PDF + ByteArray((partSize + 1_024).toInt()) { (it % 251).toByte() }
+        val key = "${folder("multipart")}/big.pdf"
+
+        val result = multipart.put(
+            BackendPutRequest(
+                key = key,
+                content = ByteArrayInputStream(payload),
+                contentLength = payload.size.toLong(),
+                contentType = "application/pdf",
+                fileName = "big.pdf",
+            ),
+        )
+
+        assertEquals(payload.size.toLong(), result.size)
+        assertEquals(payload.size.toLong(), storage.metadata(key).size)
+        assertContentEquals(payload, storage.readBytes(key))
     }
 
     @Test
