@@ -14,7 +14,7 @@ Dokumentace **pro vývojáře a údržbáře samotné knihovny**, ne pro její k
 - Jak archivovat místo mazání → [recept v sekci 18](#archivovat-místo-mazání)
 
 Verze popisovaného stavu: **2.0.0**, Kotlin `2.1.10`, JVM 21, AWS SDK v2,
-Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 184 testů.
+Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 190 testů.
 
 ---
 
@@ -195,6 +195,24 @@ fileforge/
 | `spi/` | **Stabilní kontrakt pro implementátory backendů.** Změna tady je breaking change pro každý cizí backend. Žádné defaultní argumenty. |
 | `validation/`, `naming/` | Veřejné, vyměnitelné implementace politiky. Storage-agnostické. |
 | `internal/` | Kotlinovské `internal`. Konzument to nevidí; v testech ano (Gradle asociuje test s main). |
+
+> **Proč `FileNames` není injektovaný, když `FileValidator` a `ObjectKeyGenerator` ano**
+>
+> Původní zdůvodnění znělo „sanitizace je bezpečnostní invariant, nesmí jít
+> přepsat". **To neobstojí.** Kdo by ji přepsal, je autor konzumující aplikace —
+> tedy ten, koho chrání. Obešel by sám sebe a knihovna mu v tom stejně nezabrání,
+> protože `ObjectKeyGenerator`, který rozhoduje o tom, co do klíče skutečně
+> půjde, vyměnitelný je.
+>
+> Skutečná dělba je jinde: do klíče se dostane **jen přípona**, a tu si od
+> commitu s hardeningem hlídá `extensionOf` sama. Zbytek jména končí v metadatech
+> objektu (URL-enkódovaný) a v `Content-Disposition` (RFC 5987), tedy na obou
+> místech zakódovaný. Sanitizace jména je proto hygiena — rozumný výchozí stav,
+> ne hranice, na které něco stojí.
+>
+> Zůstává statickým objektem hlavně proto, že další SPI by knihovnu rozšířilo
+> o typ, který v praxi nikdo nevymění. Kdyby bylo potřeba, je to čistě aditivní
+> změna.
 | `autoconfigure/` | Jediné místo se závislostí na Spring Boot autoconfigure. |
 | `web/` | Jediné místo se závislostí na `spring-web` — a ta je `compileOnly`, takže se konzumentovi na runtime classpath nedostane. Hlídá to `WithoutSpringWebTest`. |
 
@@ -850,7 +868,7 @@ Místo toho ruční JSON + `ConfigurationMetadataTest`, který očekávané klí
 
 ## 16. Testy — co která třída chrání
 
-184 testů, 0 skipped. Integrační testy vyžadují Docker.
+190 testů, 0 skipped. Integrační testy vyžadují Docker.
 
 | Soubor | Ř. | Co chrání |
 |---|---|---|
@@ -1381,8 +1399,8 @@ Všechny jsou veřejné a bez stavu, takže se dají použít samostatně.
 
 | Funkce | Co dělá |
 |---|---|
-| `FileNames.sanitize(name)` | Očistí jméno souboru: odřízne cesty, mezery na `_`, vyhodí nebezpečné znaky. Vyhodí `InvalidFileNameException`, nezbyde-li nic. |
-| `FileNames.extensionOf(name)` | Přípona malými písmeny bez tečky, nebo `null`. |
+| `FileNames.sanitize(name)` | Očistí jméno: odřízne cesty, mezery na `_`, nechá písmena a číslice (Unicode) plus `._-`, strop 255 znaků. Vyhodí `InvalidFileNameException`, nezbyde-li nic. **Je to hygiena, ne bezpečnostní hranice** — viz níže. |
+| `FileNames.extensionOf(name)` | Přípona malými písmeny bez tečky, nebo `null`. **Ověřuje si sama**, že to přípona vůbec může být (jen písmena a číslice, max 16 znaků), protože je to jediná část jména, která se dostane do klíče. |
 | `ContentTypeDetector.normalize(type)` | Sjednotí zápis typu: zahodí `; charset=…`, otrimuje, malá písmena. Používejte vždy před porovnáváním typů. |
 | `ContentTypeDetector.detect(head, name)` | Uhodne content type. Magic bytes mají přednost před příponou (přípona je pod kontrolou útočníka). Nakonec `application/octet-stream`. |
 | `MagicBytes.isKnown(type)` | Víme pro tento typ podpis? |

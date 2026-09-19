@@ -74,6 +74,24 @@ class FileNamesTest {
     }
 
     @Test
+    fun `should refuse an extension that could not be one`() {
+        // The extension is the only part of a name that reaches the object key.
+        // It has to be safe on its own, not because sanitize() happened to run first:
+        // a custom ObjectKeyGenerator cannot know it was relying on that.
+        assertNull(FileNames.extensionOf("a.pdf/../../../evil"))
+        assertNull(FileNames.extensionOf("x.jpg?acl=public"))
+        assertNull(FileNames.extensionOf("y.png/../secret"))
+        assertNull(FileNames.extensionOf("z." + "a".repeat(40)))
+    }
+
+    @Test
+    fun `should still accept ordinary extensions`() {
+        assertEquals("pdf", FileNames.extensionOf("report.pdf"))
+        assertEquals("gz", FileNames.extensionOf("archive.tar.gz"))
+        assertEquals("webmanifest", FileNames.extensionOf("site.webmanifest"))
+    }
+
+    @Test
     fun `should report no extension`() {
         assertNull(FileNames.extensionOf("README"))
     }

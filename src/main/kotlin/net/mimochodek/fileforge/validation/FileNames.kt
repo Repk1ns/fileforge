@@ -19,6 +19,9 @@ public object FileNames {
      */
     private const val MAX_LENGTH = 255
 
+    /** Longest plausible extension; `webmanifest` is 11. */
+    private const val MAX_EXTENSION_LENGTH = 16
+
     /**
      * Strips path components, collapses whitespace to `_` and removes anything
      * that is not a letter, a digit or `._-`, so the result can never escape its
@@ -50,7 +53,21 @@ public object FileNames {
         return sanitized
     }
 
-    /** The lowercase extension of [fileName] without the dot, or `null` when it has none. */
-    public fun extensionOf(fileName: String): String? =
-        fileName.substringAfterLast('.', "").lowercase().takeIf { it.isNotEmpty() }
+    /**
+     * The lowercase extension of [fileName] without the dot, or `null` when it
+     * has none or what follows the dot is not a plausible extension.
+     *
+     * This is the **only part of a file name that reaches the object key**, so
+     * it is validated here rather than relying on the name having been
+     * sanitized first. On a raw name, the naive version of this returns things
+     * like `/evil` for `a.pdf/../../../evil` or `jpg?acl=public` for
+     * `x.jpg?acl=public` - and an [net.mimochodek.fileforge.spi.ObjectKeyGenerator]
+     * written by someone else has no way to know it had to guard against that.
+     */
+    public fun extensionOf(fileName: String): String? {
+        val candidate = fileName.substringAfterLast('.', "").lowercase()
+        return candidate.takeIf {
+            it.isNotEmpty() && it.length <= MAX_EXTENSION_LENGTH && it.all(Char::isLetterOrDigit)
+        }
+    }
 }
