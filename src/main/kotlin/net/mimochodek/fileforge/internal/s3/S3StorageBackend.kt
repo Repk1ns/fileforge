@@ -33,7 +33,6 @@ import software.amazon.awssdk.services.s3.model.UploadPartRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import java.net.URI
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.time.Duration
@@ -75,7 +74,7 @@ internal class S3StorageBackend(
             .key(request.key)
             .contentType(request.contentType)
             .contentLength(request.contentLength)
-            .metadata(request.s3Metadata())
+            .metadata(request.metadata)
             .build()
         val response = call("upload object '${request.key}'") {
             s3.putObject(put, RequestBody.fromInputStream(request.content, request.contentLength))
@@ -96,7 +95,7 @@ internal class S3StorageBackend(
                     .bucket(bucket)
                     .key(request.key)
                     .contentType(request.contentType)
-                    .metadata(request.s3Metadata())
+                    .metadata(request.metadata)
                     .build(),
             )
         }.uploadId()
@@ -151,12 +150,11 @@ internal class S3StorageBackend(
         val response = stream.response()
         val metadata = FileMetadata(
             key = key,
-            fileName = decodeFileName(response.metadata()),
             contentType = response.contentType() ?: DEFAULT_CONTENT_TYPE,
             size = response.contentLength() ?: -1L,
             checksum = response.eTag().unquote(),
             lastModified = response.lastModified(),
-            metadata = response.metadata().userMetadata(),
+            metadata = response.metadata().orEmpty(),
         )
         return FileContent(metadata, stream)
     }
@@ -252,12 +250,11 @@ internal class S3StorageBackend(
 
     private fun HeadObjectResponse.toMetadata(key: String) = FileMetadata(
         key = key,
-        fileName = decodeFileName(metadata()),
         contentType = contentType() ?: DEFAULT_CONTENT_TYPE,
         size = contentLength() ?: -1L,
         checksum = eTag().unquote(),
         lastModified = lastModified(),
-        metadata = metadata().userMetadata(),
+        metadata = metadata().orEmpty(),
     )
 
     /**
@@ -297,25 +294,6 @@ internal class S3StorageBackend(
         val log = LoggerFactory.getLogger(S3StorageBackend::class.java)
 
         const val DEFAULT_CONTENT_TYPE = "application/octet-stream"
-
-        /**
-         * Object-metadata entry holding the original file name, URL-encoded:
-         * S3 user metadata is sent as HTTP headers and cannot carry raw
-         * non-ASCII characters.
-         */
-        const val FILE_NAME_METADATA = "fileforge-filename"
-
-        fun BackendPutRequest.s3Metadata(): Map<String, String> = buildMap {
-            putAll(metadata)
-            fileName?.let { put(FILE_NAME_METADATA, URLEncoder.encode(it, StandardCharsets.UTF_8)) }
-        }
-
-        fun decodeFileName(metadata: Map<String, String>?): String? =
-            metadata?.get(FILE_NAME_METADATA)?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
-
-        /** The caller's own metadata, without the library's reserved entries. */
-        fun Map<String, String>?.userMetadata(): Map<String, String> =
-            this.orEmpty().filterKeys { it != FILE_NAME_METADATA }
 
         /** S3 accepts at most 1000 keys per DeleteObjects request. */
         const val MAX_KEYS_PER_DELETE = 1000

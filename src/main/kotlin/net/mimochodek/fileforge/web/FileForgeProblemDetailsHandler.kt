@@ -4,7 +4,6 @@ import net.mimochodek.fileforge.exception.ContentMismatchException
 import net.mimochodek.fileforge.exception.FileNotFoundStorageException
 import net.mimochodek.fileforge.exception.FileSizeExceededException
 import net.mimochodek.fileforge.exception.FileStorageException
-import net.mimochodek.fileforge.exception.InvalidFileNameException
 import net.mimochodek.fileforge.exception.StorageUnavailableException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import org.slf4j.LoggerFactory
@@ -62,10 +61,6 @@ public class FileForgeProblemDetailsHandler {
             setProperty("declaredContentType", e.declaredContentType)
             e.detectedContentType?.let { setProperty("detectedContentType", it) }
         }
-
-    @ExceptionHandler(InvalidFileNameException::class)
-    public fun handle(e: InvalidFileNameException): ProblemDetail =
-        problem(HttpStatus.BAD_REQUEST, e).apply { setProperty("fileName", e.fileName) }
 
     @ExceptionHandler(StorageUnavailableException::class)
     public fun handle(e: StorageUnavailableException): ProblemDetail {

@@ -175,7 +175,7 @@ class DefaultFileValidatorTest {
     }
 
     private fun candidate(contentType: String, head: ByteArray, size: Long = 100) =
-        FileCandidate("file.bin", contentType, size, head)
+        FileCandidate(contentType, size, head)
 
     private companion object {
         const val DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

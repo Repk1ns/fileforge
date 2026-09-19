@@ -23,7 +23,6 @@ public fun interface FileValidator {
  * @property head the leading bytes, for magic-byte verification.
  */
 public class FileCandidate(
-    public val fileName: String,
     public val contentType: String,
     public val size: Long,
     public val head: ByteArray,

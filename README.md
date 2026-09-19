@@ -158,7 +158,7 @@ spring:
 A profile that sets only `max-file-size` inherits the rest of the global policy,
 so `attachments` accepts all six types while `photos` accepts images only.
 
-### Entity — persist the key, nothing else
+### Entity
 
 ```kotlin
 @Entity
@@ -166,16 +166,29 @@ class Attachment(
     @Id @GeneratedValue
     val id: Long? = null,
 
-    /** The only thing you have to store. Everything else is readable from storage. */
+    /** What the library gave you back. Everything else about the bytes is readable from storage. */
     val storageKey: String,
+
+    /** The library does not keep this — see below. */
+    val fileName: String,
 
     val documentId: Long,
 )
 ```
 
-You do **not** need columns for the file name, content type or size —
-`storage.metadata(key)` returns all three, because the original name is kept as
-object metadata at upload time.
+**The uploaded file name is yours to keep.** The library generates the object
+key and takes nothing from the name but its extension; it neither stores the
+name nor gives it back. That is deliberate:
+
+- the name is application data, like the uploader and the upload time — you
+  already have a row per file,
+- storing it in two places invites the two from disagreeing,
+- and reading it from storage costs a request. Rendering a list of 50
+  attachments would be 50 round-trips for something a single `SELECT` already
+  had.
+
+Content type and size *are* readable with `metadata(key)`, so those need no
+columns unless you want to list them cheaply.
 
 ### Service
 
@@ -194,12 +207,13 @@ class AttachmentService(
     /** Validates, generates a key and writes — all inside store(). */
     fun upload(documentId: Long, file: MultipartFile): Attachment {
         val stored = storage.store(file, profile = "attachments")
-        return repository.save(Attachment(storageKey = stored.key, documentId = documentId))
-    }
-
-    fun uploadPhoto(documentId: Long, file: MultipartFile): Attachment {
-        val stored = storage.store(file, profile = "photos")
-        return repository.save(Attachment(storageKey = stored.key, documentId = documentId))
+        return repository.save(
+            Attachment(
+                storageKey = stored.key,
+                fileName = file.originalFilename ?: "upload",
+                documentId = documentId,
+            ),
+        )
     }
 
     fun describe(attachment: Attachment): FileMetadata =
@@ -246,10 +260,7 @@ fun serve(attachment: Attachment): ResponseEntity<StreamingResponseBody> {
         .contentLength(meta.size)
         .header(
             HttpHeaders.CONTENT_DISPOSITION,
-            ContentDisposition.attachment()
-                .filename(meta.fileName ?: "download")
-                .build()
-                .toString(),
+            ContentDisposition.attachment().filename(attachment.fileName).build().toString(),
         )
         .body(
             StreamingResponseBody { out ->
@@ -260,14 +271,12 @@ fun serve(attachment: Attachment): ResponseEntity<StreamingResponseBody> {
 
 // B) Hand the browser a temporary link and let it fetch from storage directly.
 //    Requires storage to be reachable from the user's browser.
-fun downloadLink(attachment: Attachment): URI {
-    val meta = storage.metadata(attachment.storageKey)
-    return storage.downloadUrl(
+fun downloadLink(attachment: Attachment): URI =
+    storage.downloadUrl(
         key = attachment.storageKey,
         ttl = Duration.ofMinutes(15),
-        downloadAs = meta.fileName,          // saves under the original name
+        downloadAs = attachment.fileName,    // the name your own row remembers
     )
-}
 ```
 
 ### Optional: automatic error responses
@@ -331,7 +340,7 @@ storage implementation entirely, publish a `StorageBackend` bean.
 - [ ] Every content type you intend to store is in `allowed-mime-types`
       (the default list is images + PDF only, **no Office formats**)
 - [ ] `import net.mimochodek.fileforge.web.store` where you upload
-- [ ] Persist `StoredFile.key`; drop your own file-name/size/type columns
+- [ ] Persist `StoredFile.key` **and the uploaded file name** — the library keeps only the key
 - [ ] Reading with `read(key) { … }` or `readBytes(key)`
 - [ ] Bucket exists on the storage side — the library does not create it
 
@@ -423,8 +432,9 @@ lines and no code change.
 | `year-uuid` | `documents/2026_1f7a….pdf` (the 1.x layout) |
 
 Keys are generated, never taken from the upload, so a hostile file name cannot
-influence where the object lands. The original name is stored as object metadata
-and returned by `metadata(key)`, so you do not have to keep it in your database.
+influence where the object lands — the only thing the library reads from the
+name is its extension, and that is checked to be a plausible one before it goes
+anywhere near the key.
 
 ### Reference
 
@@ -492,13 +502,15 @@ nothing else:
 ```kotlin
 data class StoredFile(
     val key: String,          // persist this
-    val fileName: String,     // sanitized original name, also stored as metadata
     val contentType: String,  // declared or detected
     val size: Long,           // bytes actually written
     val checksum: String?,    // ETag
     val storedAt: Instant,
 )
 ```
+
+The uploaded file name is not here. Only its extension is used — for the key and,
+when you pass no `contentType`, for detection. Keep the name in your own row.
 
 The size limit applies to the bytes that arrive, not to any value you pass —
 `ContentSource.Stream(stream, length)` treats `length` as a hint only.
@@ -513,7 +525,7 @@ val text = storage.read(key) { it.stream.reader().readText() }
 val bytes = storage.readBytes(key)
 
 // Headers without transferring the body
-val metadata = storage.metadata(key)   // fileName, contentType, size, checksum
+val metadata = storage.metadata(key)   // contentType, size, checksum, lastModified
 ```
 
 Reading is scoped on purpose: `read` hands the open object to your lambda and
@@ -648,7 +660,6 @@ wrong as properties rather than in the message:
 | `FileSizeExceededException` | `actualSize`, `maxSize` | 413 |
 | `UnsupportedFileTypeException` | `contentType`, `allowedTypes` | 415 |
 | `ContentMismatchException` | `declaredContentType`, `detectedContentType` | 415 |
-| `InvalidFileNameException` | `fileName` | 400 |
 | `StorageUnavailableException` | — (retryable) | 503 |
 | `UnknownStorageProfileException` | `profile`, `knownProfiles` | 500 (configuration bug) |
 

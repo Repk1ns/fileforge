@@ -75,19 +75,13 @@ public interface StorageBackend {
 /**
  * A resolved write request: [contentLength] is the true length of [content],
  * already established by the layer above.
- *
- * @property fileName the sanitized original file name. The backend is
- *   responsible for persisting it (and for any encoding that needs - S3 object
- *   metadata travels in HTTP headers and cannot carry raw non-ASCII) so that
- *   [net.mimochodek.fileforge.model.FileMetadata.fileName] reads it back
- *   unchanged. Consumers no longer have to keep it in their own database.
+
  */
 public class BackendPutRequest(
     public val key: String,
     public val content: InputStream,
     public val contentLength: Long,
     public val contentType: String,
-    public val fileName: String? = null,
     public val metadata: Map<String, String> = emptyMap(),
 )
 

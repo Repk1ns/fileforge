@@ -62,6 +62,8 @@ before deploying.
 | `presignGetUrl(key, ttl): URL` | `downloadUrl(key, ttl, downloadAs): URI` |
 | — | `metadata(key)`, `deleteAll(keys)` |
 | `net.mimochodek.fileforge.FileStorageException` | `net.mimochodek.fileforge.exception.FileStorageException` |
+| `sanitizeFileName(name)` | **removed** — the name is not stored, keep it in your own row |
+| `InvalidFileNameException` | **removed** — nothing rejects a name any more |
 
 The exception hierarchy moved to the `exception` subpackage; the class names are
 unchanged, so a find-and-replace on the import is enough.
@@ -69,9 +71,12 @@ unchanged, so a find-and-replace on the import is enough.
 ### `upload` returned the key; `store` returns everything
 
 1.x returned a bare `String`, and every consumer re-derived the rest by hand.
-`StoredFile` gives you `key`, `fileName`, `contentType`, `size`, `checksum` and
-`storedAt`. Persist `key`; you can usually drop your own columns for the file
-name, size and content type, because `metadata(key)` reads them back.
+`StoredFile` gives you `key`, `contentType`, `size`, `checksum` and `storedAt`.
+
+Persist `key` **and the uploaded file name**: the library generates the key and
+takes nothing from the name but its extension, so the name is yours to keep.
+Content type and size are readable with `metadata(key)` if you would rather not
+store them.
 
 ### `list` is paginated
 
@@ -204,6 +209,7 @@ handling in charge.
 - [ ] `FileStorageService` -> `FileStorage`, `upload` -> `store`
 - [ ] `archive(from, to)` -> flag the row in your database; there is no move
 - [ ] Remove `FileValidationService` injections and manual `validate()` calls
+- [ ] Keep a column for the uploaded file name — 2.0 does not store it
 - [ ] Fix `net.mimochodek.fileforge.*Exception` imports to `...exception.*`
 - [ ] Move `max-file-size-bytes` / `allowed-mime-types` under `fileforge.validation`
 - [ ] Confirm the MIME whitelist covers everything you store (validation is now unconditional)

@@ -4,7 +4,6 @@ import net.mimochodek.fileforge.exception.ContentMismatchException
 import net.mimochodek.fileforge.exception.FileNotFoundStorageException
 import net.mimochodek.fileforge.exception.FileSizeExceededException
 import net.mimochodek.fileforge.exception.FileStorageException
-import net.mimochodek.fileforge.exception.InvalidFileNameException
 import net.mimochodek.fileforge.exception.StorageUnavailableException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import org.junit.jupiter.api.Test
@@ -61,14 +60,6 @@ class FileForgeProblemDetailsHandlerTest {
         assertEquals(415, problem.status)
         assertEquals("application/pdf", problem.properties?.get("declaredContentType"))
         assertEquals("image/jpeg", problem.properties?.get("detectedContentType"))
-    }
-
-    @Test
-    fun `should map an invalid file name to 400`() {
-        val problem = handler.handle(InvalidFileNameException(".."))
-
-        assertEquals(400, problem.status)
-        assertEquals("..", problem.properties?.get("fileName"))
     }
 
     @Test

@@ -14,7 +14,6 @@ import net.mimochodek.fileforge.spi.ObjectKeyGenerator
 import net.mimochodek.fileforge.spi.ObjectKeyRequest
 import net.mimochodek.fileforge.spi.StorageBackend
 import net.mimochodek.fileforge.validation.ContentTypeDetector
-import net.mimochodek.fileforge.validation.FileNames
 import org.slf4j.LoggerFactory
 import java.net.URI
 import java.nio.file.Path
@@ -43,7 +42,6 @@ public class DefaultFileStorage(
 ) : FileStorage {
 
     override fun store(upload: FileUpload): StoredFile {
-        val fileName = FileNames.sanitize(upload.fileName)
         val profile = upload.profile?.let {
             profiles[it] ?: throw UnknownStorageProfileException(it, profiles.keys)
         }
@@ -57,18 +55,17 @@ public class DefaultFileStorage(
         return resolveContent(upload.content, effectiveMaxSize, inMemoryThreshold, tempDir).use { content ->
             val contentType = upload.contentType
                 ?.let { ContentTypeDetector.normalize(it) }
-                ?: ContentTypeDetector.detect(content.head, fileName)
+                ?: ContentTypeDetector.detect(content.head, upload.fileName)
 
             effectiveValidator.validate(
                 FileCandidate(
-                    fileName = fileName,
                     contentType = contentType,
                     size = content.size,
                     head = content.head,
                 ),
             )
 
-            val key = keyGenerator.generate(ObjectKeyRequest(fileName, folder, contentType))
+            val key = keyGenerator.generate(ObjectKeyRequest(upload.fileName, folder, contentType))
             val result = content.openStream().use { stream ->
                 backend.put(
                     BackendPutRequest(
@@ -76,15 +73,13 @@ public class DefaultFileStorage(
                         content = stream,
                         contentLength = content.size,
                         contentType = contentType,
-                        fileName = fileName,
                         metadata = upload.metadata,
                     ),
                 )
             }
 
             log.debug(
-                "Stored '{}' as {} ({}, {} bytes) via {}",
-                fileName,
+                "Stored {} ({}, {} bytes) via {}",
                 key,
                 contentType,
                 result.size,
@@ -93,7 +88,6 @@ public class DefaultFileStorage(
 
             StoredFile(
                 key = key,
-                fileName = fileName,
                 contentType = contentType,
                 size = result.size,
                 checksum = result.checksum,

@@ -94,7 +94,6 @@ class ReadmeSetupTest {
             )
 
             assertTrue(stored.key.startsWith("photos/"), stored.key)
-            assertEquals("holiday_photo.jpg", stored.fileName)
         }
     }
 
@@ -158,7 +157,7 @@ class ReadmeSetupTest {
     }
 
     @Test
-    fun `should read back the original file name without a database column for it`() {
+    fun `should read content type and size back from storage`() {
         runner.run { context ->
             val storage = context.getBean(FileStorage::class.java)
             val stored = storage.store(
@@ -166,10 +165,8 @@ class ReadmeSetupTest {
                 profile = "attachments",
             )
 
-            // This is what lets a consumer persist only the key.
+            // The uploaded name is not among these - the application keeps that.
             val metadata = storage.metadata(stored.key)
-
-            assertEquals("Quarterly_Report.pdf", metadata.fileName)
             assertEquals("application/pdf", metadata.contentType)
             assertEquals(Fixtures.PDF.size.toLong(), metadata.size)
         }

@@ -25,7 +25,6 @@ class InMemoryStorageBackend : StorageBackend {
     class Stored(
         val bytes: ByteArray,
         val contentType: String,
-        val fileName: String?,
         val metadata: Map<String, String>,
         val storedAt: Instant = Instant.EPOCH,
     )
@@ -40,7 +39,7 @@ class InMemoryStorageBackend : StorageBackend {
     override fun put(request: BackendPutRequest): BackendPutResult {
         val bytes = request.content.readBytes()
         puts += request
-        objects[request.key] = Stored(bytes, request.contentType, request.fileName, request.metadata)
+        objects[request.key] = Stored(bytes, request.contentType, request.metadata)
         return BackendPutResult(size = bytes.size.toLong(), checksum = "etag-${bytes.size}")
     }
 
@@ -106,7 +105,6 @@ class InMemoryStorageBackend : StorageBackend {
 
     private fun metadataOf(key: String, stored: Stored) = FileMetadata(
         key = key,
-        fileName = stored.fileName,
         contentType = stored.contentType,
         size = stored.bytes.size.toLong(),
         checksum = "etag-${stored.bytes.size}",

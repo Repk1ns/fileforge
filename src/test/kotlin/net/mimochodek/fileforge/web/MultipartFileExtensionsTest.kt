@@ -38,7 +38,6 @@ class MultipartFileExtensionsTest {
         val stored = storage.store(file, folder = "documents")
 
         assertTrue(stored.key.startsWith("documents/"))
-        assertEquals("Quarterly_Report.pdf", stored.fileName)
         assertEquals("application/pdf", stored.contentType)
         assertEquals(Fixtures.PDF.size.toLong(), stored.size)
         assertContentEquals(Fixtures.PDF, backend.objects.getValue(stored.key).bytes)
@@ -55,11 +54,12 @@ class MultipartFileExtensionsTest {
 
     @Test
     fun `should fall back to the form field name when the browser sends no file name`() {
+        // The name is only ever mined for its extension, and that still has to work.
         val file = MockMultipartFile("upload.pdf", "", "application/pdf", Fixtures.PDF)
 
         val stored = storage.store(file)
 
-        assertEquals("upload.pdf", stored.fileName)
+        assertTrue(stored.key.endsWith(".pdf"), stored.key)
     }
 
     @Test

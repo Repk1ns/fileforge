@@ -3,9 +3,10 @@ package net.mimochodek.fileforge.model
 /**
  * Everything needed to store one file.
  *
- * @property fileName the original file name; it is sanitized, used for the key
- *   extension and preserved as backend metadata so downloads can be served
- *   under the name the user uploaded.
+ * @property fileName the name the file arrived under. **Only its extension is
+ *   used** - for the object key and, when [contentType] is null, for detection.
+ *   The name itself is neither stored nor returned; keep it in your own
+ *   database if your application wants to show it.
  * @property content the bytes to store.
  * @property contentType the declared content type, or `null` to let the library
  *   detect it from the magic bytes and the file extension.

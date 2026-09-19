@@ -3,7 +3,6 @@ package net.mimochodek.fileforge
 import net.mimochodek.fileforge.exception.ContentMismatchException
 import net.mimochodek.fileforge.exception.FileNotFoundStorageException
 import net.mimochodek.fileforge.exception.FileSizeExceededException
-import net.mimochodek.fileforge.exception.InvalidFileNameException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileUpload
@@ -60,7 +59,6 @@ class DefaultFileStorageTest {
 
             assertTrue(stored.key.startsWith("docs/"))
             assertTrue(stored.key.endsWith(".pdf"))
-            assertEquals("report.pdf", stored.fileName)
             assertEquals("application/pdf", stored.contentType)
             assertEquals(Fixtures.PDF.size.toLong(), stored.size)
             assertEquals("etag-${Fixtures.PDF.size}", stored.checksum)
@@ -68,23 +66,7 @@ class DefaultFileStorageTest {
         }
 
         @Test
-        fun `should preserve the original file name as backend metadata`() {
-            val stored = storage().store(FileUpload("Quarterly Report.pdf", ContentSource.Bytes(Fixtures.PDF)))
-
-            assertEquals("Quarterly_Report.pdf", stored.fileName)
-            assertEquals("Quarterly_Report.pdf", backend.head(stored.key).fileName)
-        }
-
-        @Test
-        fun `should sanitize a traversing file name before it reaches the backend`() {
-            val stored = storage().store(FileUpload("../../etc/passwd.pdf", ContentSource.Bytes(Fixtures.PDF)))
-
-            assertEquals("passwd.pdf", stored.fileName)
-            assertFalse(stored.key.contains(".."))
-        }
-
-        @Test
-        fun `should pass caller metadata down without the reserved entries`() {
+        fun `should pass caller metadata down untouched`() {
             val stored = storage().store(
                 FileUpload(
                     fileName = "report.pdf",
@@ -131,12 +113,6 @@ class DefaultFileStorageTest {
             assertTrue(backend.objects.isEmpty())
         }
 
-        @Test
-        fun `should reject an unusable file name`() {
-            assertThrows<InvalidFileNameException> {
-                storage().store(FileUpload("..", ContentSource.Bytes(Fixtures.PDF)))
-            }
-        }
     }
 
     @Nested
@@ -257,8 +233,6 @@ class DefaultFileStorageTest {
             val key = storage.storeBytes("report.pdf", Fixtures.PDF).key
 
             val metadata = storage.metadata(key)
-
-            assertEquals("report.pdf", metadata.fileName)
             assertEquals(Fixtures.PDF.size.toLong(), metadata.size)
         }
 

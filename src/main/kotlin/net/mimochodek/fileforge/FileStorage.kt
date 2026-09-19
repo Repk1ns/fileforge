@@ -3,7 +3,6 @@ package net.mimochodek.fileforge
 import net.mimochodek.fileforge.exception.ContentMismatchException
 import net.mimochodek.fileforge.exception.FileNotFoundStorageException
 import net.mimochodek.fileforge.exception.FileSizeExceededException
-import net.mimochodek.fileforge.exception.InvalidFileNameException
 import net.mimochodek.fileforge.exception.UnknownStorageProfileException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.model.FileContent
@@ -51,7 +50,6 @@ public interface FileStorage {
      * MVC upload use the `store(MultipartFile, …)` extension in
      * `net.mimochodek.fileforge.web`, which is exactly that conversion.
      *
-     * @throws InvalidFileNameException when the file name is unusable.
      * @throws FileSizeExceededException when the content exceeds the configured limit.
      * @throws UnsupportedFileTypeException when the content type is not whitelisted.
      * @throws ContentMismatchException when the content does not match its type.

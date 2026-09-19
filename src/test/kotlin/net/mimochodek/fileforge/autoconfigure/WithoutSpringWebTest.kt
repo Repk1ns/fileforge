@@ -90,8 +90,6 @@ class WithoutSpringWebTest {
             val stored = storage.store(
                 FileUpload("report.pdf", ContentSource.Bytes(Fixtures.PDF), folder = "docs"),
             )
-
-            assertEquals("report.pdf", storage.metadata(stored.key).fileName)
             assertEquals(Fixtures.PDF.size, storage.readBytes(stored.key).size)
         }
     }

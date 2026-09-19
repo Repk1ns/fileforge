@@ -104,7 +104,6 @@ class FileForgeIntegrationTest {
         val stored = store(folder)
 
         assertTrue(Regex("$folder/\\d{4}/\\d{2}/\\d{2}/$UUID_PATTERN\\.pdf").matches(stored.key), stored.key)
-        assertEquals("report.pdf", stored.fileName)
         assertEquals("application/pdf", stored.contentType)
         assertEquals(Fixtures.PDF.size.toLong(), stored.size)
         assertTrue(!stored.checksum.isNullOrBlank(), "the backend should report a checksum")
@@ -115,37 +114,9 @@ class FileForgeIntegrationTest {
         val stored = store(folder("read"))
 
         val metadata = storage.metadata(stored.key)
-
-        assertEquals("report.pdf", metadata.fileName, "the original file name must survive the round trip")
         assertEquals("application/pdf", metadata.contentType)
         assertEquals(Fixtures.PDF.size.toLong(), metadata.size)
         assertContentEquals(Fixtures.PDF, storage.readBytes(stored.key))
-    }
-
-    @Test
-    fun `should carry a name with diacritics all the way there and back`() {
-        // The whole chain has to agree: sanitization must keep the characters, S3
-        // object metadata must URL-encode them to survive an HTTP header, and
-        // Content-Disposition must encode them per RFC 5987.
-        val stored = storage.store(
-            FileUpload("Čtvrtletní zpráva.pdf", ContentSource.Bytes(Fixtures.PDF), folder = folder("diacritics")),
-        )
-
-        assertEquals("Čtvrtletní_zpráva.pdf", stored.fileName)
-        assertEquals("Čtvrtletní_zpráva.pdf", storage.metadata(stored.key).fileName)
-
-        val url = storage.downloadUrl(stored.key, Duration.ofMinutes(5), downloadAs = stored.fileName)
-        val connection = url.toURL().openConnection() as HttpURLConnection
-        try {
-            assertEquals(200, connection.responseCode)
-            val disposition = connection.getHeaderField("Content-Disposition")!!
-            assertTrue(
-                disposition.contains("filename*=UTF-8''%C4%8Ctvrtletn%C3%AD_zpr%C3%A1va.pdf"),
-                "got: $disposition",
-            )
-        } finally {
-            connection.disconnect()
-        }
     }
 
     @Test
@@ -236,7 +207,6 @@ class FileForgeIntegrationTest {
                 content = ByteArrayInputStream(payload),
                 contentLength = payload.size.toLong(),
                 contentType = "application/pdf",
-                fileName = "big.pdf",
             ),
         )
 
@@ -255,10 +225,12 @@ class FileForgeIntegrationTest {
     }
 
     @Test
-    fun `should make a presigned url download under the original file name`() {
+    fun `should make a presigned url download under a name the caller chooses`() {
+        // The library does not keep the uploaded name, so the download name comes
+        // from the application's own record - which is the only place it lives.
         val stored = store(folder("disposition"))
 
-        val url = storage.downloadUrl(stored.key, Duration.ofMinutes(5), downloadAs = stored.fileName)
+        val url = storage.downloadUrl(stored.key, Duration.ofMinutes(5), downloadAs = "report.pdf")
 
         val connection = url.toURL().openConnection() as HttpURLConnection
         try {

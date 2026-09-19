@@ -78,11 +78,6 @@ public class ContentMismatchException(
     },
 )
 
-/** The file name is unusable, or would allow path traversal. */
-public class InvalidFileNameException(
-    public val fileName: String,
-) : FileStorageException("Invalid file name: '$fileName'")
-
 /**
  * The storage backend could not be reached at all - connection refused, DNS
  * failure, socket timeout.

@@ -7,7 +7,6 @@ import java.time.Instant
  * persist, without re-deriving any of it by hand.
  *
  * @property key the generated object key; this is the value to persist.
- * @property fileName the sanitized original file name, also stored as backend metadata.
  * @property contentType the effective content type (declared or detected).
  * @property size the number of bytes actually written, not the caller's claim.
  * @property checksum backend checksum (the S3 ETag), when the backend reports one.
@@ -15,7 +14,6 @@ import java.time.Instant
  */
 public data class StoredFile(
     val key: String,
-    val fileName: String,
     val contentType: String,
     val size: Long,
     val checksum: String?,

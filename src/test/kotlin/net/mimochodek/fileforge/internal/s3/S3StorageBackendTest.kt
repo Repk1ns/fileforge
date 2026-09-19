@@ -76,7 +76,6 @@ class S3StorageBackendTest {
                     content = ByteArrayInputStream(Fixtures.PDF),
                     contentLength = Fixtures.PDF.size.toLong(),
                     contentType = "application/pdf",
-                    fileName = "report.pdf",
                     metadata = mapOf("owner" to "42"),
                 ),
             )
@@ -89,29 +88,6 @@ class S3StorageBackendTest {
             assertEquals("42", request.metadata()["owner"])
             assertEquals(Fixtures.PDF.size.toLong(), result.size)
             assertEquals("abc123", result.checksum, "the ETag must be unquoted")
-        }
-
-        @Test
-        fun `should url-encode the original file name into object metadata`() {
-            val requestSlot = slot<PutObjectRequest>()
-            every { s3.putObject(capture(requestSlot), any<RequestBody>()) } returns
-                PutObjectResponse.builder().build()
-
-            backend.put(
-                BackendPutRequest(
-                    key = "docs/key.pdf",
-                    content = ByteArrayInputStream(Fixtures.PDF),
-                    contentLength = Fixtures.PDF.size.toLong(),
-                    contentType = "application/pdf",
-                    // S3 user metadata travels in HTTP headers and cannot carry raw non-ASCII.
-                    fileName = "Ctvrtletni zprava.pdf",
-                ),
-            )
-
-            assertEquals(
-                "Ctvrtletni+zprava.pdf",
-                requestSlot.captured.metadata()["fileforge-filename"],
-            )
         }
 
         @Test
@@ -140,7 +116,6 @@ class S3StorageBackendTest {
                     content = ByteArrayInputStream(payload),
                     contentLength = payload.size.toLong(),
                     contentType = "application/octet-stream",
-                    fileName = "big.bin",
                 ),
             )
 
@@ -232,7 +207,7 @@ class S3StorageBackendTest {
                     .contentLength(Fixtures.PDF.size.toLong())
                     .eTag("\"etag\"")
                     .lastModified(Instant.EPOCH)
-                    .metadata(mapOf("fileforge-filename" to "Ctvrtletni+zprava.pdf", "owner" to "42"))
+                    .metadata(mapOf("owner" to "42"))
                     .build(),
                 Fixtures.PDF,
             )
@@ -241,10 +216,9 @@ class S3StorageBackendTest {
 
             assertEquals(BUCKET, requestSlot.captured.bucket())
             assertEquals("docs/key.pdf", requestSlot.captured.key())
-            assertEquals("Ctvrtletni zprava.pdf", content.metadata.fileName, "the file name must round-trip")
             assertEquals("application/pdf", content.metadata.contentType)
             assertEquals("etag", content.metadata.checksum)
-            assertEquals(mapOf("owner" to "42"), content.metadata.metadata, "reserved entries must be hidden")
+            assertEquals(mapOf("owner" to "42"), content.metadata.metadata, "caller metadata passes through")
             assertEquals(Fixtures.PDF.size, content.use { it.stream.readBytes() }.size)
         }
 
@@ -273,7 +247,6 @@ class S3StorageBackendTest {
             val metadata = backend.head("docs/key.pdf")
 
             assertEquals(123, metadata.size)
-            assertNull(metadata.fileName)
         }
     }
 
