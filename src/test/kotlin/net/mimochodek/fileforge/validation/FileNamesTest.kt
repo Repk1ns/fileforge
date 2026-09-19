@@ -34,6 +34,31 @@ class FileNamesTest {
     }
 
     @Test
+    fun `should keep diacritics instead of mangling them`() {
+        // The name never reaches the object key (that is generated) and both
+        // places it does reach are encoded for transport, so stripping it down to
+        // ASCII destroyed information for no safety gain. "Ctvrtletni zprava.pdf"
+        // used to come out as "tvrtletn_zprva.pdf".
+        assertEquals("Čtvrtletní_zpráva.pdf", FileNames.sanitize("Čtvrtletní zpráva.pdf"))
+        assertEquals("účetnictví_2026.xlsx", FileNames.sanitize("účetnictví_2026.xlsx"))
+        assertEquals("Pöschl_Söhne.pdf", FileNames.sanitize("Pöschl & Söhne.pdf"))
+        assertEquals("発注書.pdf", FileNames.sanitize("発注書.pdf"))
+    }
+
+    @Test
+    fun `should still drop punctuation that is not a letter, digit, dot, dash or underscore`() {
+        assertEquals("Smlouva_o_dílo_příloha_č.3.docx", FileNames.sanitize("Smlouva o dílo — příloha č.3.docx"))
+    }
+
+    @Test
+    fun `should cap the length`() {
+        // The name travels in an HTTP header as S3 object metadata.
+        val long = "a".repeat(400) + ".pdf"
+
+        assertEquals(255, FileNames.sanitize(long).length)
+    }
+
+    @Test
     fun `should reject a name that sanitizes to nothing`() {
         assertThrows<InvalidFileNameException> { FileNames.sanitize("///") }
     }

@@ -123,6 +123,32 @@ class FileForgeIntegrationTest {
     }
 
     @Test
+    fun `should carry a name with diacritics all the way there and back`() {
+        // The whole chain has to agree: sanitization must keep the characters, S3
+        // object metadata must URL-encode them to survive an HTTP header, and
+        // Content-Disposition must encode them per RFC 5987.
+        val stored = storage.store(
+            FileUpload("Čtvrtletní zpráva.pdf", ContentSource.Bytes(Fixtures.PDF), folder = folder("diacritics")),
+        )
+
+        assertEquals("Čtvrtletní_zpráva.pdf", stored.fileName)
+        assertEquals("Čtvrtletní_zpráva.pdf", storage.metadata(stored.key).fileName)
+
+        val url = storage.downloadUrl(stored.key, Duration.ofMinutes(5), downloadAs = stored.fileName)
+        val connection = url.toURL().openConnection() as HttpURLConnection
+        try {
+            assertEquals(200, connection.responseCode)
+            val disposition = connection.getHeaderField("Content-Disposition")!!
+            assertTrue(
+                disposition.contains("filename*=UTF-8''%C4%8Ctvrtletn%C3%AD_zpr%C3%A1va.pdf"),
+                "got: $disposition",
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    @Test
     fun `should store a stream that spills to disk`() {
         val payload = Fixtures.PDF + ByteArray(4_096) { (it % 251).toByte() }
 
