@@ -1344,16 +1344,30 @@ val name = storage.metadata(key).fileName
 storage.downloadUrl(key, downloadAs = name)   // stáhne se jako "Quarterly_Report.pdf"
 ```
 
-**Pozor — dvě věci:**
+**Pozor — tři věci:**
 
 Odkaz **neřeší autorizaci**. Ověřit, že *tenhle* uživatel na *tenhle* soubor smí,
 musíte vy, ještě než odkaz vygenerujete.
 
-A odkaz míří na **host a port úložiště** (`http://nas.local:7070/…`). Běží-li
-gateway jen v lokální síti, prohlížeč uživatele na tu adresu nedosáhne a odkaz
-je mrtvý. Pak obsah posílejte skrz aplikaci (`read(key) { }`), nebo gateway
-vystavte přes reverzní proxy na veřejném jménu a to nastavte jako
-`fileforge.s3.endpoint`.
+Odkaz míří na **host a port úložiště** (`http://nas.local:7070/…`), takže
+funguje jen pro toho, kdo na tu adresu dosáhne. Otázka tedy nezní „prohlížeč,
+nebo ne", ale **kdo bajty stahuje**:
+
+| stahuje | gateway jen v LAN | veřejné AWS / proxy |
+|---|---|---|
+| vaše Spring aplikace | funguje | funguje |
+| jiný server na té LAN (Next.js BFF, worker) | **funguje** | funguje |
+| prohlížeč koncového uživatele | nefunguje | funguje |
+
+U serverového konzumenta na stejné síti je zisk konkrétní: dostane **časově
+omezený přístup k jednomu objektu, aniž by kdy držel přihlašovací údaje k S3**.
+Klíče i autorizační logika zůstávají ve Spring aplikaci, ven jde jen úzká
+schopnost. Bajty ovšem pořád tečou přes server — jen přes jiný.
+
+**TTL je kompromis mezi cacheovatelností a expozicí.** Odkaz, který se mění
+s každým požadavkem, znemožňuje HTTP cache i cache `next/image`, protože obě
+klíčují podle URL. Delší TTL to vyřeší a zároveň prodlouží okno, ve kterém
+uniklý odkaz funguje.
 
 > **Presigned PUT knihovna nenabízí.** Odkaz na *nahrání* by pustil prohlížeč
 > zapisovat rovnou do úložiště, tedy mimo veškerou validaci, kvůli které

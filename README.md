@@ -569,30 +569,59 @@ A **presigned URL** is a time-limited signed link that lets its holder read (or
 write) an object without any storage credentials. The browser talks to the
 storage directly and the bytes never pass through your application.
 
-Which to use depends on one question: **can the user's browser reach your
-storage?**
+The question is not "browser or not" but **who fetches the bytes, and can that
+party reach the storage host?** A presigned URL contains the storage endpoint —
+`http://nas.local:7070/…` — so it only works for a fetcher that can resolve and
+reach it.
 
-| | Stream through the app | Presigned GET |
-| --- | --- | --- |
-| Storage must be publicly reachable | no | **yes** |
-| Bytes pass through your app | yes | no |
-| Access control | your code, per request | link-based; anyone with the link |
-| Works for a LAN-only NAS | **yes** | no |
-| Bandwidth cost on the app | full | none |
+| | Stream through the app | Presigned GET, fetched server-side | Presigned GET, fetched by the browser |
+| --- | --- | --- | --- |
+| Who fetches | your Spring app | another server (BFF, Next.js, worker) | the end user's browser |
+| Storage must be reachable from | your app | that server | the public internet |
+| Works with a LAN-only NAS | **yes** | **yes** | no |
+| Bytes pass through a server of yours | yes | yes, a different one | **no** |
+| Needs storage credentials | yes | **no** — that is the point | no |
 
-**Self-hosted gateway on a LAN (NAS, internal Docker host).** A presigned URL
-points at the gateway's own host and port — for example
-`http://nas.local:7070/…`. If the browser cannot resolve or reach that address,
-the link is dead. **Stream through the application** (variant A above), or
-expose the gateway through a reverse proxy on a public hostname and set
-`fileforge.s3.endpoint` to that hostname.
+**Self-hosted gateway on a LAN, browser outside it.** The browser cannot reach
+`nas.local:7070`, so a presigned URL handed to it is a dead link. Stream through
+the application (variant A above).
 
-**Real AWS S3, or a gateway behind a public reverse proxy.** Presigned GET is
-the better choice: your application does not carry the traffic, and
-`downloadAs` makes the file save under its original name.
+**Self-hosted gateway on a LAN, with a server-side consumer on that LAN** — a
+Next.js BFF, another service, a worker. Presigned GET works here, and it buys
+something real: that consumer gets **time-limited read access to one object
+without ever holding S3 credentials**. Your Spring application keeps the keys
+and the authorization logic and hands out a narrow capability instead.
 
-Either way, a presigned URL carries **no authorization of its own** — check that
-this user may see this file before you generate the link, and keep the TTL short.
+Be clear-eyed about what it does *not* buy: the bytes still travel through a
+server of yours, just a different one. Compared to streaming from Spring, you
+have moved the load rather than removed it. Where that pays off is when the
+other server does something useful with the bytes — `next/image` fetching a
+source image, optimizing it and caching the result means your Spring app never
+touches image traffic at all.
+
+> **The trap in this setup:** the presigned URL must stay server-side. Render it
+> into HTML — `<img src={presignedUrl}>` from a Server Component — and the
+> browser is suddenly the fetcher, pointed at a host it cannot reach. Fetch it
+> in the server-side code and re-serve the bytes (or an optimized derivative)
+> under your own origin.
+
+**Real AWS S3, or a gateway behind a public reverse proxy.** Now the browser can
+fetch directly, which is the case presigned URLs were designed for: no server of
+yours carries the traffic, and `downloadAs` makes the file save under its
+original name. Moving to this from the LAN setup is a configuration change.
+
+### Two things to get right either way
+
+**A presigned URL carries no authorization of its own.** Anyone holding it can
+read the object until it expires. Check that this user may see this file
+*before* you generate the link.
+
+**TTL trades cacheability against exposure.** The default is 15 minutes. A URL
+that changes on every request defeats HTTP caching and `next/image`'s cache,
+because both key on the URL — you can end up re-fetching the same object
+constantly. Lengthening the TTL fixes that and widens the window in which a
+leaked link still works. If you need both stable URLs and short exposure, serve
+through your own origin instead.
 
 ### Why there is no presigned PUT
 
