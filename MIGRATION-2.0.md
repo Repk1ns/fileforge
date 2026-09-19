@@ -54,13 +54,13 @@ before deploying.
 | --- | --- |
 | `FileStorageService` | `FileStorage` |
 | `upload(key, stream, length, type): String` | `store(FileUpload): StoredFile` |
-| `download(key): InputStream` | `read(key): FileContent`, `read(key) { }`, `readBytes(key)` |
+| `download(key): InputStream` | `read(key) { … }` or `readBytes(key)` |
 | `delete(key)` | `delete(key): Boolean` (true if it existed) |
 | `exists(key)` | unchanged |
 | `list(prefix): List<String>` | `list(prefix, limit, pageToken, delimiter): FilePage` |
-| `archive(from, to)` | `move(from, to)` |
+| `archive(from, to)` | **removed** — mark the file inactive in your own database instead |
 | `presignGetUrl(key, ttl): URL` | `downloadUrl(key, ttl, downloadAs): URI` |
-| — | `metadata(key)`, `copy()`, `deleteAll(keys)`, `uploadUrl(key, type, ttl)` |
+| — | `metadata(key)`, `deleteAll(keys)` |
 | `net.mimochodek.fileforge.FileStorageException` | `net.mimochodek.fileforge.exception.FileStorageException` |
 
 The exception hierarchy moved to the `exception` subpackage; the class names are
@@ -88,8 +88,9 @@ while (true) {
 
 ### `download` no longer leaks
 
-`read(key)` returns a `FileContent` that holds a pooled HTTP connection and must
-be closed. Prefer `read(key) { ... }`, which closes it for you, or `readBytes`.
+Reading is scoped: `read(key) { … }` hands you the open object and closes it
+afterwards, including when your lambda throws. There is no unscoped variant, so
+the pooled HTTP connection cannot be leaked. For small files, `readBytes(key)`.
 
 ## 3. Configuration keys moved
 
@@ -200,13 +201,14 @@ handling in charge.
 
 ## Checklist
 
-- [ ] `FileStorageService` -> `FileStorage`, `upload` -> `store`, `archive` -> `move`
+- [ ] `FileStorageService` -> `FileStorage`, `upload` -> `store`
+- [ ] `archive(from, to)` -> flag the row in your database; there is no move
 - [ ] Remove `FileValidationService` injections and manual `validate()` calls
 - [ ] Fix `net.mimochodek.fileforge.*Exception` imports to `...exception.*`
 - [ ] Move `max-file-size-bytes` / `allowed-mime-types` under `fileforge.validation`
 - [ ] Confirm the MIME whitelist covers everything you store (validation is now unconditional)
 - [ ] Wrap `list()` in a pagination loop if you relied on getting every key
-- [ ] Use `read(key) { }` or `readBytes(key)` instead of an unclosed `download()`
+- [ ] Use `read(key) { }` or `readBytes(key)` instead of `download()`
 - [ ] Set `naming.strategy: year-uuid` if you want the old key layout
 - [ ] Declare the AWS SDK yourself if your code imports it
 - [ ] Drop `S3Client` / `S3Presigner` overrides, or replace with a `StorageBackend` bean

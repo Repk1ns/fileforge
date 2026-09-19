@@ -1,7 +1,6 @@
 package net.mimochodek.fileforge.autoconfigure
 
 import io.mockk.mockk
-import net.mimochodek.fileforge.DefaultFileStorage
 import net.mimochodek.fileforge.FileStorage
 import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.spi.FileValidator

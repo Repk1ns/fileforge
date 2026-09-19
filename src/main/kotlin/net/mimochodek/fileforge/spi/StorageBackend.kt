@@ -16,7 +16,7 @@ import java.time.Duration
  * therefore shared by every backend.
  *
  * Adding a backend (filesystem, Azure Blob, GCS, ...) means implementing these
- * methods; no consumer code changes.
+ * eight methods; no consumer code changes.
  *
  * Implementations must translate backend-specific failures into the library's
  * exception hierarchy, and must not leak backend types through this interface.
@@ -63,9 +63,6 @@ public interface StorageBackend {
      */
     public fun list(prefix: String, limit: Int, pageToken: String?, delimiter: String?): FilePage
 
-    /** Copies [sourceKey] to [targetKey], leaving the source in place. */
-    public fun copy(sourceKey: String, targetKey: String)
-
     /**
      * Builds a temporary read URL for [key], valid for [ttl].
      *
@@ -73,9 +70,6 @@ public interface StorageBackend {
      *   this file name (for S3, `response-content-disposition`).
      */
     public fun presignGet(key: String, ttl: Duration, downloadAs: String?): URI
-
-    /** Builds a temporary write URL for [key], valid for [ttl]. */
-    public fun presignPut(key: String, contentType: String, ttl: Duration): URI
 }
 
 /**

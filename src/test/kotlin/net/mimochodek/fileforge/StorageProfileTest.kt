@@ -12,6 +12,7 @@ import net.mimochodek.fileforge.spi.FileCandidate
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.testsupport.InMemoryStorageBackend
+import net.mimochodek.fileforge.testsupport.storeBytes
 import net.mimochodek.fileforge.validation.DefaultFileValidator
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -189,18 +190,10 @@ class StorageProfileTest {
     fun `should ignore profiles entirely when none is named`() {
         val storage = storage(mapOf("documents" to StorageProfile(folder = "documents")))
 
-        val stored = storage.store("report.pdf", Fixtures.PDF, folder = "loose")
+        val stored = storage.storeBytes("report.pdf", Fixtures.PDF, folder = "loose")
 
         assertTrue(stored.key.startsWith("loose/"), stored.key)
         assertEquals(1, globalValidator.calls)
     }
 
-    @Test
-    fun `should accept a profile through the byte-array overload`() {
-        val storage = storage(mapOf("documents" to StorageProfile(folder = "documents")))
-
-        val stored = storage.store("report.pdf", Fixtures.PDF, profile = "documents")
-
-        assertTrue(stored.key.startsWith("documents/"), stored.key)
-    }
 }

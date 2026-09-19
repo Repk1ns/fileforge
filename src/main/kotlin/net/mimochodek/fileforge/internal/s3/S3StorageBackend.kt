@@ -17,7 +17,6 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload
 import software.amazon.awssdk.services.s3.model.CompletedPart
-import software.amazon.awssdk.services.s3.model.CopyObjectRequest
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.Delete
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
@@ -30,11 +29,9 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
-import software.amazon.awssdk.services.s3.model.UploadPartCopyRequest
 import software.amazon.awssdk.services.s3.model.UploadPartRequest
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest
 import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -227,85 +224,6 @@ internal class S3StorageBackend(
         )
     }
 
-    override fun copy(sourceKey: String, targetKey: String) {
-        val source = headObject(sourceKey)
-        val size = source.contentLength() ?: 0L
-        if (size > MAX_SINGLE_PART_COPY) {
-            log.debug("Copying {} ({} bytes) via multipart; a single-part copy is capped at 5 GiB", sourceKey, size)
-            multipartCopy(sourceKey, targetKey, size, source.contentType())
-            return
-        }
-        call("copy object '$sourceKey' to '$targetKey'", notFoundKey = sourceKey) {
-            s3.copyObject(
-                CopyObjectRequest.builder()
-                    .sourceBucket(bucket)
-                    .sourceKey(sourceKey)
-                    .destinationBucket(bucket)
-                    .destinationKey(targetKey)
-                    .build(),
-            )
-        }
-    }
-
-    /**
-     * Copies via multipart, because a single-part `CopyObject` is capped at 5 GiB
-     * by S3.
-     */
-    private fun multipartCopy(sourceKey: String, targetKey: String, size: Long, contentType: String?) {
-        val uploadId = call("start multipart copy of '$sourceKey'") {
-            s3.createMultipartUpload(
-                CreateMultipartUploadRequest.builder()
-                    .bucket(bucket)
-                    .key(targetKey)
-                    .apply { if (contentType != null) contentType(contentType) }
-                    .build(),
-            )
-        }.uploadId()
-
-        try {
-            val parts = ArrayList<CompletedPart>()
-            var offset = 0L
-            var partNumber = 1
-            while (offset < size) {
-                val last = minOf(offset + COPY_PART_SIZE, size) - 1
-                val response = call("copy part $partNumber of '$sourceKey'") {
-                    s3.uploadPartCopy(
-                        UploadPartCopyRequest.builder()
-                            .sourceBucket(bucket)
-                            .sourceKey(sourceKey)
-                            .destinationBucket(bucket)
-                            .destinationKey(targetKey)
-                            .uploadId(uploadId)
-                            .partNumber(partNumber)
-                            .copySourceRange("bytes=$offset-$last")
-                            .build(),
-                    )
-                }
-                parts += CompletedPart.builder()
-                    .partNumber(partNumber)
-                    .eTag(response.copyPartResult().eTag())
-                    .build()
-                offset = last + 1
-                partNumber++
-            }
-            call("complete multipart copy of '$sourceKey'") {
-                s3.completeMultipartUpload(
-                    CompleteMultipartUploadRequest.builder()
-                        .bucket(bucket)
-                        .key(targetKey)
-                        .uploadId(uploadId)
-                        .multipartUpload(CompletedMultipartUpload.builder().parts(parts).build())
-                        .build(),
-                )
-            }
-        } catch (e: Throwable) {
-            runCatching {
-                s3.abortMultipartUpload { it.bucket(bucket).key(targetKey).uploadId(uploadId) }
-            }
-            throw e
-        }
-    }
-
     override fun presignGet(key: String, ttl: Duration, downloadAs: String?): URI {
         val get = GetObjectRequest.builder()
             .bucket(bucket)
@@ -321,22 +239,6 @@ internal class S3StorageBackend(
             )
         }.url().toURI()
     }
-
-    override fun presignPut(key: String, contentType: String, ttl: Duration): URI =
-        call("presign PUT URL for object '$key'") {
-            presigner.presignPutObject(
-                PutObjectPresignRequest.builder()
-                    .signatureDuration(ttl)
-                    .putObjectRequest(
-                        PutObjectRequest.builder()
-                            .bucket(bucket)
-                            .key(key)
-                            .contentType(contentType)
-                            .build(),
-                    )
-                    .build(),
-            )
-        }.url().toURI()
 
     override fun close() {
         runCatching { s3.close() }
@@ -418,9 +320,6 @@ internal class S3StorageBackend(
         /** S3 accepts at most 1000 keys per DeleteObjects request. */
         const val MAX_KEYS_PER_DELETE = 1000
 
-        /** S3 rejects a single-part CopyObject above 5 GiB. */
-        const val MAX_SINGLE_PART_COPY = 5L * 1024 * 1024 * 1024
-
         /** S3 rejects a single PutObject above 5 GiB. */
         const val MAX_SINGLE_PART_PUT = 5L * 1024 * 1024 * 1024
 
@@ -429,9 +328,6 @@ internal class S3StorageBackend(
          * part size, and 512 MiB x 10 000 parts covers any object S3 accepts.
          */
         const val UPLOAD_PART_SIZE = 512L * 1024 * 1024
-
-        /** Part size for multipart copies; well within the 10 000 part limit. */
-        const val COPY_PART_SIZE = 1024L * 1024 * 1024
 
         fun String?.unquote(): String? = this?.trim('"')
 

@@ -22,10 +22,8 @@ import software.amazon.awssdk.services.s3.model.AbortMultipartUploadResponse
 import software.amazon.awssdk.services.s3.model.CommonPrefix
 import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.CompleteMultipartUploadResponse
-import software.amazon.awssdk.services.s3.model.CopyObjectRequest
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadRequest
 import software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse
-import software.amazon.awssdk.services.s3.model.CopyObjectResponse
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.DeleteObjectResponse
 import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest
@@ -47,8 +45,6 @@ import software.amazon.awssdk.services.s3.model.UploadPartResponse
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest
 import java.io.ByteArrayInputStream
 import java.net.URI
 import java.time.Duration
@@ -438,34 +434,6 @@ class S3StorageBackendTest {
         }
     }
 
-    @Nested
-    inner class Copying {
-
-        @Test
-        fun `should copy a small object in one request`() {
-            every { s3.headObject(any<HeadObjectRequest>()) } returns
-                HeadObjectResponse.builder().contentLength(1_024).contentType("application/pdf").build()
-            val copySlot = slot<CopyObjectRequest>()
-            every { s3.copyObject(capture(copySlot)) } returns CopyObjectResponse.builder().build()
-
-            backend.copy("active/file.pdf", "archive/file.pdf")
-
-            val copy = copySlot.captured
-            assertEquals(BUCKET, copy.sourceBucket())
-            assertEquals("active/file.pdf", copy.sourceKey())
-            assertEquals(BUCKET, copy.destinationBucket())
-            assertEquals("archive/file.pdf", copy.destinationKey())
-            verify(exactly = 0) { s3.deleteObject(any<DeleteObjectRequest>()) }
-        }
-
-        @Test
-        fun `should map a missing source to FileNotFoundStorageException`() {
-            every { s3.headObject(any<HeadObjectRequest>()) } throws
-                NoSuchKeyException.builder().statusCode(404).build()
-
-            assertThrows<FileNotFoundStorageException> { backend.copy("missing.pdf", "archive/file.pdf") }
-        }
-    }
 
     @Nested
     inner class Presigning {
@@ -515,20 +483,6 @@ class S3StorageBackendTest {
             assertTrue(disposition.contains("filename*=UTF-8''zpr%C3%A1va.pdf"), disposition)
         }
 
-        @Test
-        fun `should presign a put url`() {
-            val presignSlot = slot<PutObjectPresignRequest>()
-            val presigned = mockk<PresignedPutObjectRequest>()
-            every { presigned.url() } returns URI.create("http://localhost/put").toURL()
-            every { presigner.presignPutObject(capture(presignSlot)) } returns presigned
-
-            val uri = backend.presignPut("docs/key.pdf", "application/pdf", Duration.ofMinutes(2))
-
-            assertEquals("http://localhost/put", uri.toString())
-            assertEquals(Duration.ofMinutes(2), presignSlot.captured.signatureDuration())
-            assertEquals("application/pdf", presignSlot.captured.putObjectRequest().contentType())
-            assertEquals("docs/key.pdf", presignSlot.captured.putObjectRequest().key())
-        }
     }
 
     @Test

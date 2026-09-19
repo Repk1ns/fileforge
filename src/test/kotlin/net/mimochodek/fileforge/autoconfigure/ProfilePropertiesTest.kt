@@ -8,6 +8,7 @@ import net.mimochodek.fileforge.model.FileUpload
 import net.mimochodek.fileforge.spi.StorageBackend
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.testsupport.InMemoryStorageBackend
+import net.mimochodek.fileforge.testsupport.storeBytes
 import net.mimochodek.fileforge.validation.UnknownTypePolicy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -55,7 +56,7 @@ class ProfilePropertiesTest {
         runner.run { context ->
             val storage = context.getBean(FileStorage::class.java)
 
-            val stored = storage.store("report.pdf", Fixtures.PDF, profile = "documents")
+            val stored = storage.storeBytes("report.pdf", Fixtures.PDF, profile = "documents")
 
             assertTrue(stored.key.startsWith("documents/"), stored.key)
         }
@@ -69,7 +70,7 @@ class ProfilePropertiesTest {
 
             // Well within the global 50MB, over the profile's 2KB.
             val thrown = assertThrows<FileSizeExceededException> {
-                storage.store("report.pdf", payload, profile = "documents")
+                storage.storeBytes("report.pdf", payload, profile = "documents")
             }
 
             assertEquals(2048, thrown.maxSize)
@@ -83,7 +84,7 @@ class ProfilePropertiesTest {
 
             // image/jpeg is globally allowed but not allowed in the documents profile.
             val thrown = assertThrows<UnsupportedFileTypeException> {
-                storage.store("photo.jpg", Fixtures.JPEG, profile = "documents")
+                storage.storeBytes("photo.jpg", Fixtures.JPEG, profile = "documents")
             }
 
             assertEquals(setOf("application/pdf"), thrown.allowedTypes)
@@ -114,7 +115,7 @@ class ProfilePropertiesTest {
                 assertEquals(UnknownTypePolicy.REJECT, merged.unknownTypePolicy)
 
                 // image/jpeg is inherited from the global whitelist, so this passes.
-                val stored = storage.store("photo.jpg", Fixtures.JPEG, profile = "small")
+                val stored = storage.storeBytes("photo.jpg", Fixtures.JPEG, profile = "small")
                 assertTrue(stored.key.startsWith("small/"), stored.key)
             }
     }

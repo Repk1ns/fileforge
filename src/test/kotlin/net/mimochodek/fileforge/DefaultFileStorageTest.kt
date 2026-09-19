@@ -12,6 +12,7 @@ import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.testsupport.InMemoryStorageBackend
+import net.mimochodek.fileforge.testsupport.storeBytes
 import net.mimochodek.fileforge.validation.DefaultFileValidator
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -104,7 +105,7 @@ class DefaultFileStorageTest {
 
         @Test
         fun `should accept a byte array through the convenience overload`() {
-            val stored = storage().store("photo.jpg", Fixtures.JPEG, folder = "images")
+            val stored = storage().storeBytes("photo.jpg", Fixtures.JPEG, folder = "images")
 
             assertEquals("image/jpeg", stored.contentType)
             assertTrue(stored.key.startsWith("images/"))
@@ -224,7 +225,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should read bytes back`() {
             val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
+            val key = storage.storeBytes("report.pdf", Fixtures.PDF).key
 
             assertContentEquals(Fixtures.PDF, storage.readBytes(key))
         }
@@ -232,7 +233,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should expose metadata alongside the stream`() {
             val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
+            val key = storage.storeBytes("report.pdf", Fixtures.PDF).key
 
             val contentType = storage.read(key) { it.metadata.contentType }
 
@@ -242,7 +243,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should close the stream after the scoped read`() {
             val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
+            val key = storage.storeBytes("report.pdf", Fixtures.PDF).key
 
             val captured = storage.read(key) { it.stream }
 
@@ -253,7 +254,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should report metadata without transferring content`() {
             val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
+            val key = storage.storeBytes("report.pdf", Fixtures.PDF).key
 
             val metadata = storage.metadata(key)
 
@@ -273,7 +274,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should report whether the object existed on delete`() {
             val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
+            val key = storage.storeBytes("report.pdf", Fixtures.PDF).key
 
             assertTrue(storage.delete(key))
             assertFalse(storage.delete(key), "delete must be idempotent")
@@ -282,7 +283,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should delete many keys at once`() {
             val storage = storage()
-            val keys = (1..3).map { storage.store("report.pdf", Fixtures.PDF).key }
+            val keys = (1..3).map { storage.storeBytes("report.pdf", Fixtures.PDF).key }
 
             storage.deleteAll(keys)
 
@@ -290,31 +291,9 @@ class DefaultFileStorageTest {
         }
 
         @Test
-        fun `should copy without removing the source`() {
-            val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
-
-            storage.copy(key, "copies/report.pdf")
-
-            assertTrue(storage.exists(key))
-            assertTrue(storage.exists("copies/report.pdf"))
-        }
-
-        @Test
-        fun `should move by copying then deleting the source`() {
-            val storage = storage()
-            val key = storage.store("report.pdf", Fixtures.PDF).key
-
-            storage.move(key, "archive/report.pdf")
-
-            assertFalse(storage.exists(key))
-            assertContentEquals(Fixtures.PDF, storage.readBytes("archive/report.pdf"))
-        }
-
-        @Test
         fun `should paginate listings`() {
             val storage = storage()
-            repeat(5) { storage.store("report.pdf", Fixtures.PDF, folder = "docs") }
+            repeat(5) { storage.storeBytes("report.pdf", Fixtures.PDF, folder = "docs") }
 
             val first = storage.list("docs/", limit = 2)
             val second = storage.list("docs/", limit = 2, pageToken = first.nextPageToken)
@@ -328,9 +307,9 @@ class DefaultFileStorageTest {
         @Test
         fun `should roll nested keys into common prefixes when a delimiter is given`() {
             val storage = storage()
-            storage.store("report.pdf", Fixtures.PDF, folder = "docs")
-            storage.store("report.pdf", Fixtures.PDF, folder = "docs/2026")
-            storage.store("report.pdf", Fixtures.PDF, folder = "docs/2025")
+            storage.storeBytes("report.pdf", Fixtures.PDF, folder = "docs")
+            storage.storeBytes("report.pdf", Fixtures.PDF, folder = "docs/2026")
+            storage.storeBytes("report.pdf", Fixtures.PDF, folder = "docs/2025")
 
             val page = storage.list("docs/", delimiter = "/")
 
@@ -341,7 +320,7 @@ class DefaultFileStorageTest {
         @Test
         fun `should report the last page`() {
             val storage = storage()
-            storage.store("report.pdf", Fixtures.PDF, folder = "docs")
+            storage.storeBytes("report.pdf", Fixtures.PDF, folder = "docs")
 
             val page = storage.list("docs/", limit = 10)
 
@@ -367,12 +346,6 @@ class DefaultFileStorageTest {
             assertTrue(uri.toString().contains("ttl=900"), "unexpected uri: $uri")
         }
 
-        @Test
-        fun `should build an upload url`() {
-            val uri = storage().uploadUrl("docs/key.pdf", "application/pdf", Duration.ofMinutes(1))
-
-            assertEquals("memory://put/docs/key.pdf?ttl=60&contentType=application/pdf", uri.toString())
-        }
     }
 
     /** A stream that may only be consumed once, like a socket or a servlet body. */

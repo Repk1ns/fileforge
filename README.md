@@ -307,7 +307,7 @@ storage implementation entirely, publish a `StorageBackend` bean.
       (the default list is images + PDF only, **no Office formats**)
 - [ ] `import net.mimochodek.fileforge.web.store` where you upload
 - [ ] Persist `StoredFile.key`; drop your own file-name/size/type columns
-- [ ] Reading with `read(key) { … }` or `readBytes(key)`, not a bare `read(key)`
+- [ ] Reading with `read(key) { … }` or `readBytes(key)`
 - [ ] Bucket exists on the storage side — the library does not create it
 
 ---
@@ -431,17 +431,17 @@ and returned by `metadata(key)`, so you do not have to keep it in your database.
 
 ### Storing
 
+There is exactly one way in — `store(FileUpload)` — plus a thin extension for
+Spring MVC uploads that builds the `FileUpload` for you.
+
 ```kotlin
-// From a Spring MVC upload — one call
+// From a Spring MVC upload — the extension, which streams
 val stored: StoredFile = storage.store(file, folder = "documents")
 
 // …or with the folder and policy declared once in configuration
 val stored = storage.store(file, profile = "documents")
 
-// From bytes
-storage.store("report.pdf", bytes, folder = "documents")
-
-// Full control
+// Anything else
 storage.store(
     FileUpload(
         fileName = "report.pdf",
@@ -452,6 +452,14 @@ storage.store(
     ),
 )
 ```
+
+**Prefer `ContentSource.Stream`.** It is buffered only up to
+`fileforge.buffering.in-memory-threshold` (1MB) and spilled to a temporary file
+beyond that, so a 20MB upload never sits whole in the heap.
+`ContentSource.Bytes` loads everything into memory and is meant for content that
+is already there — a generated report, a thumbnail. There is deliberately no
+`store(fileName, bytes, …)` shorthand, because it makes the memory-hungry choice
+the convenient one.
 
 `StoredFile` carries everything worth persisting — usually you keep `key` and
 nothing else:
@@ -473,25 +481,27 @@ The size limit applies to the bytes that arrive, not to any value you pass —
 ### Reading
 
 ```kotlin
-val bytes = storage.readBytes(key)
-
-// Scoped read - the backend connection cannot leak
+// Scoped read — the backend connection cannot leak
 val text = storage.read(key) { it.stream.reader().readText() }
+
+// Whole object into memory, for small files
+val bytes = storage.readBytes(key)
 
 // Headers without transferring the body
 val metadata = storage.metadata(key)   // fileName, contentType, size, checksum
 ```
 
-`readBytes` loads the whole object into memory; for large objects use
-`read(key) { }` and copy in chunks.
+Reading is scoped on purpose: `read` hands the open object to your lambda and
+closes it afterwards, including when the lambda throws. There is no unscoped
+variant that returns an open `FileContent`, because that is a connection leak
+waiting for the first person who forgets.
 
 ### Links
 
 ```kotlin
-storage.downloadUrl(key)                                          // 15 minutes
+storage.downloadUrl(key)                                       // 15 minutes
 storage.downloadUrl(key, Duration.ofHours(1))
-storage.downloadUrl(key, downloadAs = "Quarterly Report.pdf")     // saves as this
-storage.uploadUrl("uploads/raw.bin", "application/octet-stream")  // browser to storage
+storage.downloadUrl(key, downloadAs = "Quarterly Report.pdf")  // saves as this
 ```
 
 ### Listing
@@ -515,15 +525,16 @@ level.commonPrefixes  // documents/2026/, documents/2025/, ...
 storage.exists(key)
 storage.delete(key)             // idempotent; true if it existed
 storage.deleteAll(keys)         // batched, 1000 per request on S3
-storage.copy(from, to)
-storage.move(from, to)          // copy then delete; not atomic
 ```
 
 Uploads larger than S3's 5 GiB single-request limit are sent as a multipart
 upload automatically; nothing to configure.
 
-`copy` and `move` operate **within one bucket** and carry object metadata
-across, so the original file name survives relocation.
+There is no `copy` or `move`. Relocating an object on S3 is a full server-side
+copy followed by a delete, it is not atomic, and it changes the key you have
+stored in your database. **To archive a file, mark it inactive in your own
+database and leave the object where it is** — no copying, atomic, instantly
+reversible, and the key never moves.
 
 ---
 
@@ -558,21 +569,17 @@ the better choice: your application does not carry the traffic, and
 Either way, a presigned URL carries **no authorization of its own** — check that
 this user may see this file before you generate the link, and keep the TTL short.
 
-### Presigned PUT — read this before using it
+### Why there is no presigned PUT
 
-`uploadUrl()` lets a browser upload **straight into storage**, skipping your
-application entirely. That is also its problem:
+A presigned upload URL would let a browser write **straight into storage**,
+skipping the application — and therefore skipping every check this library
+exists to perform. Size, MIME type and magic bytes would all go unverified,
+because the library would never see the bytes, and the key would be chosen by
+the caller instead of generated.
 
-> **Content uploaded through a presigned PUT is never validated.** The library
-> never sees the bytes, so size, MIME type and magic bytes are all unchecked,
-> and the object key is chosen by the caller instead of generated.
-
-It exists for genuinely large uploads (hundreds of MB, multi-GB) where proxying
-through the application is wasteful. For files of a few MB, upload normally
-through `store()` and keep the validation.
-
-If you do use it, budget for the follow-up work: verify the object afterwards
-with `metadata(key)`, and treat the key as untrusted input.
+It is not offered. Upload through `store()` and keep the validation. If you ever
+genuinely need direct browser-to-storage writes for multi-GB files, implement
+your own `StorageBackend` extension for it and own that trade-off explicitly.
 
 ---
 

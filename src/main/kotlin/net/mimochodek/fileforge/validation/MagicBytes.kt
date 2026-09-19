@@ -87,9 +87,6 @@ public object MagicBytes {
         "application/vnd.ms-powerpoint" to OLE2_SIGNATURES,
     )
 
-    /** The number of leading bytes required to evaluate every known signature. */
-    public const val REQUIRED_HEAD_BYTES: Int = 16
-
     /** `true` when a signature is known for [contentType]. */
     public fun isKnown(contentType: String): Boolean = contentType in SIGNATURES
 

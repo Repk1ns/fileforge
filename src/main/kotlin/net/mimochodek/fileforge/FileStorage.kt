@@ -44,6 +44,13 @@ public interface FileStorage {
     /**
      * Stores [upload] and returns everything worth persisting about it.
      *
+     * The one way in. Content arrives as a [net.mimochodek.fileforge.model.ContentSource];
+     * prefer `Stream`, which is buffered only up to
+     * `fileforge.buffering.in-memory-threshold` and spilled to a temporary file
+     * beyond it, so a large upload never sits whole in the heap. For a Spring
+     * MVC upload use the `store(MultipartFile, …)` extension in
+     * `net.mimochodek.fileforge.web`, which is exactly that conversion.
+     *
      * @throws InvalidFileNameException when the file name is unusable.
      * @throws FileSizeExceededException when the content exceeds the configured limit.
      * @throws UnsupportedFileTypeException when the content type is not whitelisted.
@@ -53,26 +60,16 @@ public interface FileStorage {
      */
     public fun store(upload: FileUpload): StoredFile
 
-    /** Stores [bytes] under [fileName]; detects the content type when none is given. */
-    public fun store(
-        fileName: String,
-        bytes: ByteArray,
-        contentType: String? = null,
-        folder: String = "",
-        profile: String? = null,
-    ): StoredFile
-
     /**
-     * Opens the object under [key].
+     * Opens the object under [key], hands it to [block], and always closes it -
+     * including when [block] throws.
      *
-     * The result holds a backend resource (for S3, a pooled HTTP connection) and
-     * **must** be closed. Prefer the scoped overload, which cannot leak.
+     * Scoped on purpose: the object holds a backend resource (for S3, a pooled
+     * HTTP connection), and an API that hands that out unscoped is an API that
+     * leaks connections the first time someone forgets.
      *
      * @throws FileNotFoundStorageException when the object does not exist.
      */
-    public fun read(key: String): FileContent
-
-    /** Opens the object under [key], hands it to [block], and always closes it. */
     public fun <T> read(key: String, block: (FileContent) -> T): T
 
     /** Reads the whole object under [key] into memory. */
@@ -97,18 +94,6 @@ public interface FileStorage {
      * request) - which matters when deleting an entity with many attachments.
      */
     public fun deleteAll(keys: Collection<String>)
-
-    /** Copies [from] to [to], leaving the source in place. */
-    public fun copy(from: String, to: String)
-
-    /**
-     * Moves [from] to [to].
-     *
-     * Not atomic: copy and delete are separate backend calls, so a failure
-     * between them leaves both keys present. The source is only deleted once the
-     * copy has succeeded, so the object is never lost.
-     */
-    public fun move(from: String, to: String)
 
     /**
      * Returns one page of at most [limit] keys under [prefix].
@@ -135,12 +120,6 @@ public interface FileStorage {
      *   [net.mimochodek.fileforge.model.FileMetadata.fileName].
      */
     public fun downloadUrl(key: String, ttl: Duration = DEFAULT_TTL, downloadAs: String? = null): URI
-
-    /**
-     * A temporary URL for writing [key], so a browser can upload straight to
-     * storage without proxying the bytes through the application.
-     */
-    public fun uploadUrl(key: String, contentType: String, ttl: Duration = DEFAULT_TTL): URI
 
     public companion object {
         /** Default validity of presigned URLs. */

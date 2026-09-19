@@ -2,7 +2,6 @@ package net.mimochodek.fileforge
 
 import net.mimochodek.fileforge.exception.UnknownStorageProfileException
 import net.mimochodek.fileforge.internal.resolveContent
-import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileContent
 import net.mimochodek.fileforge.model.FileMetadata
 import net.mimochodek.fileforge.model.FilePage
@@ -103,20 +102,10 @@ public class DefaultFileStorage(
         }
     }
 
-    override fun store(
-        fileName: String,
-        bytes: ByteArray,
-        contentType: String?,
-        folder: String,
-        profile: String?,
-    ): StoredFile = store(FileUpload(fileName, ContentSource.Bytes(bytes), contentType, folder, profile = profile))
-
-    override fun read(key: String): FileContent {
+    override fun <T> read(key: String, block: (FileContent) -> T): T {
         log.debug("Reading {}", key)
-        return backend.get(key)
+        return backend.get(key).use(block)
     }
-
-    override fun <T> read(key: String, block: (FileContent) -> T): T = read(key).use(block)
 
     override fun readBytes(key: String): ByteArray = read(key) { it.stream.readBytes() }
 
@@ -135,37 +124,11 @@ public class DefaultFileStorage(
         log.debug("Deleted {} objects", keys.size)
     }
 
-    override fun copy(from: String, to: String) {
-        backend.copy(from, to)
-        log.debug("Copied {} to {}", from, to)
-    }
-
-    override fun move(from: String, to: String) {
-        backend.copy(from, to)
-        try {
-            backend.delete(from)
-        } catch (e: RuntimeException) {
-            // The copy succeeded, so the object is not lost - but both keys now
-            // exist, and the caller believes only the target does.
-            log.warn(
-                "Moved {} to {} but could not delete the source; both keys now exist",
-                from,
-                to,
-                e,
-            )
-            throw e
-        }
-        log.debug("Moved {} to {}", from, to)
-    }
-
     override fun list(prefix: String, limit: Int, pageToken: String?, delimiter: String?): FilePage =
         backend.list(prefix, limit, pageToken, delimiter)
 
     override fun downloadUrl(key: String, ttl: Duration, downloadAs: String?): URI =
         backend.presignGet(key, ttl, downloadAs)
-
-    override fun uploadUrl(key: String, contentType: String, ttl: Duration): URI =
-        backend.presignPut(key, contentType, ttl)
 
     public companion object {
         /** Streams up to this size are buffered in memory; larger ones spill to disk. */

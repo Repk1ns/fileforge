@@ -14,7 +14,7 @@ Dokumentace **pro vývojáře a údržbáře samotné knihovny**, ne pro její k
 - Jak archivovat místo mazání → [recept v sekci 18](#archivovat-místo-mazání)
 
 Verze popisovaného stavu: **2.0.0**, Kotlin `2.1.10`, JVM 21, AWS SDK v2,
-Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 191 testů.
+Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 180 testů.
 
 ---
 
@@ -74,9 +74,9 @@ umožňuje, aby současně platilo:
 - validace je nepodmíněná a nedá se obejít.
 
 `StorageBackend` je úmyslně **hloupý**: `put` / `get` / `head` / `exists` /
-`delete` / `deleteAll` / `list` / `copy` / `presignGet` / `presignPut` nad
-**přesnými** klíči. Žádná validace, žádné pojmenování, žádná politika. Přidání
-filesystem nebo Azure backendu znamená implementovat těchto 10 metod —
+`delete` / `deleteAll` / `list` / `presignGet` nad **přesnými** klíči. Žádná
+validace, žádné pojmenování, žádná politika. Přidání filesystem nebo Azure
+backendu znamená implementovat těchto 8 metod —
 referenční ukázkou je `InMemoryStorageBackend` v testech (124 řádků včetně
 KDoc).
 
@@ -202,19 +202,26 @@ fileforge/
 
 ## 5. Veřejné API — kořenový balíček
 
-### `FileStorage.kt` (152 ř.)
+### `FileStorage.kt` (131 ř.)
 
 **Rozhraní, které konzument injektuje.** Jediný typ, který je opravdu nutné
 znát, aby se knihovna dala použít.
 
-14 metod ve čtyřech skupinách:
+9 členů ve čtyřech skupinách:
 
 | Skupina | Metody |
 |---|---|
-| zápis | `store(FileUpload)`, `store(fileName, bytes, contentType, folder, profile)` |
-| čtení | `read(key)`, `read(key) { }`, `readBytes(key)`, `metadata(key)` |
-| správa | `exists`, `delete`, `deleteAll`, `copy`, `move`, `list` |
-| odkazy | `downloadUrl(key, ttl, downloadAs)`, `uploadUrl(key, contentType, ttl)` |
+| zápis | `store(FileUpload)` — jediná cesta dovnitř |
+| čtení | `read(key) { }`, `readBytes(key)`, `metadata(key)` |
+| správa | `exists`, `delete`, `deleteAll`, `list` |
+| odkazy | `downloadUrl(key, ttl, downloadAs)` |
+
+**Co tu záměrně není.** `store(fileName, bytes, …)` dělal z paměťově náročné
+volby tu pohodlnou. `read(key)` bez lambdy vracel otevřenou konexi, kterou
+někdo dřív nebo později zapomene zavřít. `copy`/`move` přesouvaly objekt, což
+je na S3 plná serverová kopie plus mazání, není to atomické a mění to klíč
+uložený v databázi konzumenta — archivace patří do relační databáze jako
+příznak. `uploadUrl` obcházel celou validaci, kvůli které knihovna existuje.
 
 Companion object drží `DEFAULT_TTL` (15 minut) a `DEFAULT_PAGE_SIZE` (1000).
 
@@ -228,7 +235,7 @@ rozšiřovací bod — tím je `StorageBackend`, a ten defaulty nemá.
 Přidáváte-li metodu, přidejte ji i do `DefaultFileStorage` (implementuje
 rozhraní, kompilátor si to vynutí) a zvažte, jestli potřebuje nový řádek v SPI.
 
-### `DefaultFileStorage.kt` (176 ř.)
+### `DefaultFileStorage.kt` (147 ř.)
 
 **Pipeline `sanitizace → načtení → validace → klíč → delegace`.** Jediná
 implementace `FileStorage`, kterou knihovna dodává.
@@ -251,24 +258,9 @@ DefaultFileStorage(
 Vše nad `backend` je společné pro **všechny** backendy — proto je nový backend
 jen hrst triviálních metod a proto se validace nedá vynechat.
 
-Zvláštní pozornost si zaslouží `move()`:
-
-```kotlin
-override fun move(from: String, to: String) {
-    backend.copy(from, to)
-    try { backend.delete(from) } catch (e: RuntimeException) {
-        log.warn("Moved {} to {} but could not delete the source; both keys now exist", …)
-        throw e
-    }
-    …
-}
-```
-
-Operace **není atomická** a být nemůže — copy a delete jsou dva volání
-backendu. Zdroj se maže až po úspěšném kopírování, takže objekt se nikdy
-neztratí; ale když selže mazání, existují oba klíče, zatímco volající věří, že
-existuje jen cíl. Proto `WARN` — v `1.0.0` tohle selhání proběhlo v úplném
-tichu.
+Čtení je jen ve scoped variantě: `read` předá otevřený objekt lambdě a pak ho
+zavře, i když lambda vyhodí výjimku. Nescoped varianta neexistuje — vracet
+otevřenou konexi je pozvánka k jejímu úniku.
 
 ### `StorageProfile.kt` (29 ř.)
 
@@ -364,7 +356,7 @@ která zavřít zapomenout nedovolí.
 
 ### `StorageBackend.kt` (104 ř.)
 
-SPI, které implementuje backend. Kromě 10 metod obsahuje i dva pomocné typy:
+SPI, které implementuje backend. Kromě 8 metod obsahuje i dva pomocné typy:
 
 ```kotlin
 public class BackendPutRequest(
@@ -556,7 +548,7 @@ streamy neznámé délky, které `1.0.0` neumělo vůbec.
 
 ## 11. `internal/s3/` — S3 backend
 
-### `S3StorageBackend.kt` (451 ř.)
+### `S3StorageBackend.kt` (347 ř.)
 
 Největší soubor v repozitáři. `internal`, takže konzument ho nevidí — vynucení
 abstrakce je Kotlinovské, ne jen konvenční.
@@ -582,9 +574,7 @@ cesta testovatelná bez 5 GiB fixture** — testy ji projedou se 4bajtovými
 | `FILE_NAME_METADATA` | `fileforge-filename` | S3 user metadata jde v HTTP hlavičkách → jméno se URL-enkóduje |
 | `MAX_KEYS_PER_DELETE` | 1000 | tvrdý limit `DeleteObjects` |
 | `MAX_SINGLE_PART_PUT` | 5 GiB | S3 odmítne jednorázový `PutObject` nad tím |
-| `MAX_SINGLE_PART_COPY` | 5 GiB | totéž pro `CopyObject` |
 | `UPLOAD_PART_SIZE` | 512 MiB | bezpečně nad 5 MiB minimem; 512 MiB × 10 000 částí pokryje cokoli |
-| `COPY_PART_SIZE` | 1 GiB | totéž pro multipart copy |
 
 #### Centrální překlad chyb
 
@@ -610,7 +600,6 @@ nedosažitelný“, je to retryovatelné a mapuje se na jiný HTTP status.
 | `delete` | S3 neřekne, zda objekt existoval → nejdřív `exists()`, pak `delete`. Dvě volání, dokumentovaná cena za `Boolean` |
 | `deleteAll` | chunkuje po 1000; kontroluje `response.errors()` a vyhodí s prvním selháním |
 | `list` | **jeden** `listObjectsV2`, ne paginátor: `.contents()` na paginátoru je eager |
-| `copy` | nad 5 GiB → `multipartCopy` s `UploadPartCopy` a rozsahy `bytes=…` |
 | `presignGet` | `downloadAs` → `responseContentDisposition` |
 | `close` | zavírá `s3` i `presigner` — backend je vlastní |
 
@@ -861,7 +850,7 @@ Místo toho ruční JSON + `ConfigurationMetadataTest`, který očekávané klí
 
 ## 16. Testy — co která třída chrání
 
-191 testů, 0 skipped. Integrační testy vyžadují Docker.
+180 testů, 0 skipped. Integrační testy vyžadují Docker.
 
 | Soubor | Ř. | Co chrání |
 |---|---|---|
@@ -927,12 +916,9 @@ držet v synchronizaci. Každá verze se dá publikovat jen jednou.
 
 ### Archivovat místo mazání
 
-Častý požadavek: fotky se nemají mazat, ale „odložit do archivu“. Jsou na to dvě
-cesty a liší se podstatně.
-
-#### A) Logický archiv — doporučená výchozí volba
-
-Objekt zůstane, kde je, a archivaci si poznamenáte ve své databázi:
+Častý požadavek: fotky se nemají mazat, ale „odložit do archivu". Knihovna na to
+**nemá žádnou operaci a mít ji nebude** — archivace patří do vaší relační
+databáze.
 
 ```kotlin
 @Entity
@@ -945,103 +931,27 @@ fun archive(photo: Photo) { photo.archivedAt = Instant.now() }   // to je celé
 fun restore(photo: Photo) { photo.archivedAt = null }
 ```
 
-Proč začít tímhle:
+Proč ne přesun objektu v úložišti:
 
-- **Nic se nekopíruje.** Přesun na S3 znamená fyzické zkopírování celého objektu
-  a jeho následné smazání — u 10 000 fotek to je 10 000 kopií a 10 000 mazání.
-- **Je to atomické.** Jedna změna v databázové transakci. Nemůže se stát, že
-  polovina operace projde.
+- **Nic se nekopíruje.** „Přesun" na S3 je plná serverová kopie celého objektu
+  a následné mazání — u 10 000 fotek 20 000 operací za nic.
+- **Je to atomické.** Jedna změna v transakci. Copy + delete jsou dvě volání
+  a mezi nimi existuje okamžik, kdy platí jen polovina.
 - **Klíč se nemění**, takže nemůže vzniknout rozpor mezi databází a bucketem.
+  Přesun naopak vyžaduje uložit nový klíč — a když se to nepovede, ukazuje
+  databáze na neexistující objekt.
 - **Vrácení z archivu je okamžité.**
 
-#### B) Fyzický přesun — když na prefixu něco závisí
+Jediný případ, kdy by fyzický přesun dával smysl, je když na prefixu `archive/`
+něco skutečně jedná — typicky S3 lifecycle pravidlo („po 30 dnech do
+Glacieru"). Pak si kopii a mazání naprogramujte v aplikaci nad `StorageBackend`,
+nebo si rozšiřte vlastní backend; do obecného API knihovny to nepatří, protože
+je to neatomická operace, kterou drtivá většina konzumentů nepotřebuje.
 
-Skutečně přesouvat má smysl jen tehdy, když na prefixu `archive/` něco jedná:
-
-- **S3 lifecycle pravidlo** na prefix (např. „po 30 dnech přesuň do Glacieru“) —
-  to je nejčastější legitimní důvod,
-- odlišná přístupová práva na prefix,
-- jiný proces, který si obsah `archive/` čte nebo zálohuje.
-
-```kotlin
-@Service
-class PhotoService(private val storage: FileStorage, private val repo: PhotoRepository) {
-
-    fun archive(photo: Photo) {
-        val archivedKey = "archive/${photo.storageKey}"
-
-        storage.move(photo.storageKey, archivedKey)
-
-        // Nový klíč MUSÍ skončit v databázi, jinak fotku už nikdy nenajdete.
-        photo.storageKey = archivedKey
-        repo.save(photo)
-    }
-
-    fun restore(photo: Photo) {
-        val activeKey = photo.storageKey.removePrefix("archive/")
-        storage.move(photo.storageKey, activeKey)
-        photo.storageKey = activeKey
-        repo.save(photo)
-    }
-}
-```
-
-Na co si dát pozor:
-
-**Klíč už prefix obsahuje.** `store(file, folder = "photos")` vyrobí klíč
-`photos/2026/09/17/<uuid>.jpg`. Z `"archive/$key"` tedy vyjde
-`archive/photos/2026/09/17/<uuid>.jpg`. To je v pořádku a je to žádoucí —
-`removePrefix("archive/")` vrátí přesně původní klíč. Nesnažte se prefix
-v klíči nahrazovat, jen ho předřazujte.
-
-**`move()` není atomický.** Je to `copy` a pak `delete` — dvě volání S3. Zdroj
-se maže až po úspěšném zkopírování, takže se fotka nikdy neztratí, ale když
-selže mazání, existují oba klíče. Knihovna to zaloguje jako `WARN`
-(*„Moved … but could not delete the source; both keys now exist“*) a výjimku
-propustí dál. Uklidit původní klíč pak musíte vy.
-
-**Pořadí operací vůči databázi.** Nejbezpečnější je `move()` → až potom uložit
-nový klíč. Když spadne `move()`, databáze ukazuje na starý klíč, který stále
-existuje — jste v konzistentním stavu. Kdybyste uložili klíč první a `move()`
-pak spadl, databáze ukazuje na neexistující objekt.
-
-**Metadata přesun přežijí.** Původní název souboru i content type se při
-`copy()`/`move()` přenesou — S3 `CopyObject` kopíruje user metadata
-automaticky. Je to ověřeno integračními testy `should carry metadata across a
-copy` a `should move an object`, takže na tom můžete stavět: po archivaci
-`storage.metadata(archivedKey).fileName` dál vrací `Quarterly_Report.pdf`.
-
-**Jen v rámci jednoho bucketu.** `copy()` i `move()` mají zdrojový i cílový
-bucket nastavený na `fileforge.s3.bucket`. Archivace do *jiného* bucketu
-podporovaná není; potřebovali byste rozšířit `StorageBackend` o cílový bucket.
-
-**Hromadný přesun neexistuje.** Není `moveAll()`. Pro dávku je nejúspornější
-zkopírovat po jednom a mazat dávkově, protože mazání umí S3 po 1000:
-
-```kotlin
-val pairs = photos.map { it.storageKey to "archive/${it.storageKey}" }
-pairs.forEach { (from, to) -> storage.copy(from, to) }
-storage.deleteAll(pairs.map { it.first })      // jedno volání na 1000 klíčů
-```
-
-**Profily tu nepomohou.** `fileforge.profiles` se uplatní jen při `store()` —
-určují, kam se soubor ukládá poprvé a jaká politika na něj platí. Na přesun
-existujícího objektu nemají vliv.
-
-#### Prohlížení archivu
-
-```kotlin
-var page = storage.list("archive/photos/", limit = 500)
-while (true) {
-    page.keys.forEach(::process)
-    page = storage.list("archive/photos/", limit = 500, pageToken = page.nextPageToken ?: break)
-}
-```
-
-> Poznámka k historii: `1.0.0` mělo metodu `archive(sourceKey, targetKey)`, jejíž
-> vlastní KDoc přiznával „Archive = generic move“. Byla to obecná operace
-> přesunu se zavádějícím jménem, proto se v `2.0.0` jmenuje `move()`.
-> Archivace je *použití* té operace, ne její název.
+> Poznámka k historii: `1.0.0` mělo `archive(sourceKey, targetKey)`, jehož
+> vlastní KDoc přiznával „Archive = generic move". `2.0.0` to přejmenovalo na
+> `move()`. Zrušeno úplně, protože zdrojem pravdy o tom, co je archivované, je
+> databáze aplikace, ne rozložení klíčů v bucketu.
 
 ### Přidat nový storage backend
 
@@ -1130,21 +1040,12 @@ nepřepsaná pole na defaulty knihovny místo na globální konfiguraci.
 
 ### Známé nedodělky
 
-- **`MagicBytes.REQUIRED_HEAD_BYTES = 16` je deklarovaná, ale nikde
-  nepoužitá.** Skutečný počet bufferovaných hlavičkových bajtů je
-  `HEAD_BYTES = 64` v `ResolvedContent.kt`. Je to mrtvá veřejná konstanta
-  (a pod `explicitApi()` tedy součást publikované plochy) a navíc zavádějící.
-  Buď ji odstranit, nebo z ní udělat jediný zdroj pravdy pro `HEAD_BYTES`.
 - **`delete()` u S3 stojí dvě volání** (`exists` + `delete`), protože S3
   neřekne, zda objekt existoval. Dokumentovaná cena za návratový `Boolean`.
   Kdyby to někdy tlačilo, nabízí se varianta `deleteQuietly()` bez návratové
   hodnoty.
-- **`move()` není atomický** a být nemůže. Pokrytí je `WARN` + dokumentace.
 - **Dokka je stále na V1 pluginu** (build hlásí deprecation warning). Migrace
   na V2 je neurgentní úklid.
-- **Multipart *copy* nemá integrační test** — na rozdíl od multipart *uploadu*
-  by vyžadoval >5 GiB objekt, protože `COPY_PART_SIZE` nelze injektovat.
-  Pokrytý je jen jednotkově.
 
 ---
 
@@ -1322,12 +1223,12 @@ whitelistu), `ContentMismatchException` (obsah neodpovídá typu),
 **Pozor:** klíč **není** jméno souboru — generuje se. Když v `FileUpload`
 nevyplníte `contentType`, knihovna ho detekuje z obsahu.
 
-#### `store(fileName, bytes, contentType?, folder, profile?): StoredFile`
-
-**Co dělá:** totéž, ale pro data, která už máte jako `ByteArray`.
-
-**Kdy použít:** vygenerovaný PDF report, obrázek z převodu, cokoli, co vzniklo
-v paměti.
+**Volte `ContentSource.Stream`.** Bufferuje se jen do
+`fileforge.buffering.in-memory-threshold` (1 MB) a zbytek jde na disk, takže
+20MB upload nikdy neleží celý v haldě. `ContentSource.Bytes` načte vše do
+paměti — je pro obsah, který už tam je (vygenerovaný report, náhled). Zkratka
+`store(fileName, bytes, …)` schválně neexistuje: dělala by z paměťově náročné
+volby tu pohodlnou.
 
 #### `store(file: MultipartFile, folder, profile?, metadata): StoredFile`
 
@@ -1344,23 +1245,17 @@ fun upload(file: MultipartFile) = storage.store(file, folder = "documents")
 `import net.mimochodek.fileforge.web.store`. Content type od prohlížeče se
 **ověřuje** proti magic bytes, `file.size` je jen nápověda.
 
-#### `read(key: String): FileContent`
-
-**Co dělá:** otevře objekt — dá vám metadata a stream s obsahem.
-
-**Pozor:** **musíte to zavřít.** Drží HTTP konexi do úložiště. Zapomenete-li,
-konexe se nevrátí do poolu a aplikace po čase zatuhne. Použijte radši variantu
-s lambdou níž. Tuhle sáhněte jen tehdy, když stream potřebujete předat dál
-(např. do HTTP odpovědi) a zavřete ho sami.
-
-**Vyhodí:** `FileNotFoundStorageException`.
-
 #### `read(key: String, block: (FileContent) -> T): T`
 
 **Co dělá:** otevře objekt, předá ho vaší lambdě a **vždy ho zavře** — i když
 lambda vyhodí výjimku.
 
-**Kdy použít:** skoro vždy, když čtete. Tohle je bezpečná varianta.
+**Kdy použít:** vždy, když čtete obsah. Jiná varianta není: nescoped `read(key)`
+vracející otevřený `FileContent` byla zrušena, protože držela HTTP konexi
+a první, kdo by ji zapomněl zavřít, by ji vyčerpal z poolu. Streamování do HTTP
+odpovědi se dělá kopií uvnitř lambdy.
+
+**Vyhodí:** `FileNotFoundStorageException`.
 
 ```kotlin
 val text = storage.read(key) { it.stream.reader().readText() }
@@ -1413,24 +1308,6 @@ jedním požadavkem, takže tohle je řádově rychlejší než `delete()` v cyk
 **Pozor:** selže-li kterýkoli klíč, vyhodí výjimku se jménem prvního
 neúspěšného. Některé z dávky už ale mohly být smazané — počítejte s tím.
 
-#### `copy(from: String, to: String)`
-
-**Co dělá:** zkopíruje objekt na nový klíč. Zdroj nechá být.
-
-**Pozor:** kopíruje se **uvnitř jednoho bucketu**. Metadata včetně původního
-jména se přenesou. Nad 5 GiB knihovna automaticky přepne na kopírování po
-částech, protože jednorázová kopie by selhala.
-
-#### `move(from: String, to: String)`
-
-**Co dělá:** přesune objekt — zkopíruje a pak smaže zdroj.
-
-**Kdy použít:** archivace, přerovnání do jiného prefixu.
-
-**Pozor:** **není atomický.** Zdroj se maže až po úspěšné kopii, takže se
-objekt nikdy neztratí; ale selže-li mazání, existují oba klíče a knihovna
-zaloguje `WARN`. Podrobně v [receptu na archivaci](#archivovat-místo-mazání).
-
 #### `list(prefix, limit, pageToken?, delimiter?): FilePage`
 
 **Co dělá:** vypíše klíče začínající na `prefix`, po stránkách.
@@ -1477,18 +1354,11 @@ je mrtvý. Pak obsah posílejte skrz aplikaci (`read(key) { }`), nebo gateway
 vystavte přes reverzní proxy na veřejném jménu a to nastavte jako
 `fileforge.s3.endpoint`.
 
-#### `uploadUrl(key, contentType, ttl): URI`
+> **Presigned PUT knihovna nenabízí.** Odkaz na *nahrání* by pustil prohlížeč
+> zapisovat rovnou do úložiště, tedy mimo veškerou validaci, kvůli které
+> knihovna existuje — velikost, typ ani magic bytes by nikdo nezkontroloval
+> a klíč by si volil volající.
 
-**Co dělá:** vyrobí dočasný odkaz pro **nahrání**, takže prohlížeč pošle soubor
-rovnou do úložiště.
-
-**Kdy použít:** u velkých souborů, kde nechcete zatěžovat aplikaci přeposíláním
-dat.
-
-**Pozor — důležité:** obsah nahraný tudy **neprojde validací**. Knihovna ho
-nikdy nevidí, takže se nezkontroluje velikost, typ ani magic bytes a klíč si
-volíte vy. Používejte to jen tam, kde vám nekontrolovaný obsah nevadí, nebo
-doplňte ověření po nahrání.
 
 ### 21.2 Pomocné funkce, které smíte volat sami
 
@@ -1509,7 +1379,7 @@ Všechny jsou veřejné a bez stavu, takže se dají použít samostatně.
 
 ### 21.3 `StorageBackend` — jen pro toho, kdo píše nový backend
 
-Tohle je [SPI](#20-slovníček-pojmů) — tyto funkce **implementujete**, knihovna
+Tohle je [SPI](#20-slovníček-pojmů) — těchto osm funkcí **implementujete**, knihovna
 je volá. Vždy dostanete **přesný klíč**; nic negenerujte a nic nevalidujte, to
 už proběhlo nad vámi.
 
@@ -1523,9 +1393,7 @@ už proběhlo nad vámi.
 | `delete(key)` | Smaž. Musí být idempotentní a vrátit `true`, jen když objekt existoval. |
 | `deleteAll(keys)` | Smaž dávku; dávkuj, umí-li to úložiště. |
 | `list(prefix, limit, pageToken, delimiter)` | Jedna stránka. Respektuj `limit` a vrať `nextPageToken`. |
-| `copy(from, to)` | Zkopíruj, zdroj nech být. |
 | `presignGet(key, ttl, downloadAs)` | Dočasný odkaz na čtení. |
-| `presignPut(key, contentType, ttl)` | Dočasný odkaz na zápis. |
 
 **Nepsané povinnosti:** přeložit všechny chyby úložiště do balíčku
 `exception/` (nic vlastního nesmí uniknout) a nepřidávat do rozhraní defaultní
@@ -1544,7 +1412,6 @@ se něco děje.
 | `call(action, notFoundKey) { }` | `internal/s3/S3StorageBackend.kt` | Obálka kolem každého volání AWS SDK. Překládá chyby, aby žádný AWS typ neunikl skrz abstrakci. |
 | `mapped(action, e)` | tamtéž | Rozhoduje, na jakou výjimku chybu přeložit. Chyba bez HTTP odpovědi (nedostupná síť) → `StorageUnavailableException`, jinak `FileStorageException`. |
 | `multipartPut(request)` | tamtéž | Nahrávání po částech nad 5 GiB. Při selhání upload **abortuje**, jinak by osiřelé části dál stály peníze za skladování. |
-| `multipartCopy(...)` | tamtéž | Totéž pro kopírování nad 5 GiB. |
 | `contentDisposition(fileName)` | tamtéž | Sestaví hlavičku pro stažení pod čitelným jménem, ve dvou variantách (ASCII pro staré klienty + UTF-8 pro přesné jméno). |
 | `s3Metadata()` / `decodeFileName()` | tamtéž | Zakódují a dekódují původní jméno. S3 metadata jdou v HTTP hlavičkách a neunesou diakritiku, proto se jméno URL-enkóduje. |
 | `userMetadata()` | tamtéž | Odfiltruje interní položky knihovny, aby konzument viděl jen svá metadata. |

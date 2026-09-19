@@ -245,69 +245,6 @@ class FileForgeIntegrationTest {
     }
 
     @Test
-    fun `should accept an upload through a presigned put url`() {
-        val key = "${folder("upload-url")}/direct.pdf"
-
-        val url = storage.uploadUrl(key, "application/pdf", Duration.ofMinutes(5))
-
-        val connection = (url.toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "PUT"
-            doOutput = true
-            setRequestProperty("Content-Type", "application/pdf")
-        }
-        try {
-            connection.outputStream.use { it.write(Fixtures.PDF) }
-            assertTrue(connection.responseCode in 200..299, "unexpected status ${connection.responseCode}")
-        } finally {
-            connection.disconnect()
-        }
-        assertContentEquals(Fixtures.PDF, storage.readBytes(key))
-    }
-
-    @Test
-    fun `should copy without touching the source`() {
-        val folder = folder("copy")
-        val stored = store(folder)
-        val target = "$folder/copy.pdf"
-
-        storage.copy(stored.key, target)
-
-        assertTrue(storage.exists(stored.key))
-        assertContentEquals(Fixtures.PDF, storage.readBytes(target))
-    }
-
-    @Test
-    fun `should carry metadata across a copy`() {
-        // Archiving relies on this: the original file name must survive relocation,
-        // otherwise a "move to archive" silently loses what the user uploaded.
-        val folder = folder("copy-metadata")
-        val stored = storage.store(
-            FileUpload("Quarterly Report.pdf", ContentSource.Bytes(Fixtures.PDF), folder = folder),
-        )
-        val target = "$folder/copy.pdf"
-
-        storage.copy(stored.key, target)
-
-        val metadata = storage.metadata(target)
-        assertEquals("Quarterly_Report.pdf", metadata.fileName, "the original file name must survive a copy")
-        assertEquals("application/pdf", metadata.contentType)
-        assertEquals(Fixtures.PDF.size.toLong(), metadata.size)
-    }
-
-    @Test
-    fun `should move an object`() {
-        val folder = folder("move")
-        val stored = store(folder)
-        val target = "$folder/archive/report.pdf"
-
-        storage.move(stored.key, target)
-
-        assertFalse(storage.exists(stored.key))
-        assertContentEquals(Fixtures.PDF, storage.readBytes(target))
-        assertEquals("report.pdf", storage.metadata(target).fileName, "metadata must survive a move")
-    }
-
-    @Test
     fun `should delete idempotently and report whether the object existed`() {
         val stored = store(folder("delete"))
 

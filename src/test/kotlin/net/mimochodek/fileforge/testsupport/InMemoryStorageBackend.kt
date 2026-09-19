@@ -101,16 +101,8 @@ class InMemoryStorageBackend : StorageBackend {
         return FilePage(flat.take(limit), null, prefixes)
     }
 
-    override fun copy(sourceKey: String, targetKey: String) {
-        val stored = objects[sourceKey] ?: throw FileNotFoundStorageException(sourceKey)
-        objects[targetKey] = stored
-    }
-
     override fun presignGet(key: String, ttl: Duration, downloadAs: String?): URI =
         URI.create("memory://get/$key?ttl=${ttl.seconds}&downloadAs=${downloadAs ?: ""}")
-
-    override fun presignPut(key: String, contentType: String, ttl: Duration): URI =
-        URI.create("memory://put/$key?ttl=${ttl.seconds}&contentType=$contentType")
 
     private fun metadataOf(key: String, stored: Stored) = FileMetadata(
         key = key,
