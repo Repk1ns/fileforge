@@ -14,7 +14,7 @@ Dokumentace **pro vývojáře a údržbáře samotné knihovny**, ne pro její k
 - Jak archivovat místo mazání → [recept v sekci 18](#archivovat-místo-mazání)
 
 Verze popisovaného stavu: **2.0.0**, Kotlin `2.1.10`, JVM 21, AWS SDK v2,
-Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 180 testů.
+Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 184 testů.
 
 ---
 
@@ -196,7 +196,7 @@ fileforge/
 | `validation/`, `naming/` | Veřejné, vyměnitelné implementace politiky. Storage-agnostické. |
 | `internal/` | Kotlinovské `internal`. Konzument to nevidí; v testech ano (Gradle asociuje test s main). |
 | `autoconfigure/` | Jediné místo se závislostí na Spring Boot autoconfigure. |
-| `web/` | Jediné místo se závislostí na `spring-web` — a ta je `compileOnly`. |
+| `web/` | Jediné místo se závislostí na `spring-web` — a ta je `compileOnly`, takže se konzumentovi na runtime classpath nedostane. Hlídá to `WithoutSpringWebTest`. |
 
 ---
 
@@ -850,7 +850,7 @@ Místo toho ruční JSON + `ConfigurationMetadataTest`, který očekávané klí
 
 ## 16. Testy — co která třída chrání
 
-180 testů, 0 skipped. Integrační testy vyžadují Docker.
+184 testů, 0 skipped. Integrační testy vyžadují Docker.
 
 | Soubor | Ř. | Co chrání |
 |---|---|---|
@@ -866,6 +866,7 @@ Místo toho ruční JSON + `ConfigurationMetadataTest`, který očekávané klí
 | `ReadmeSetupTest` | 187 | **Drží README u pravdy.** Nabootuje přesně tu konfiguraci, kterou README nabízí jako hotový recept, a uloží přesně tu směsici souborů, kterou slibuje zvládnout. Copy-paste blok, který nikdo nespouští, se od kódu odchýlí v tichu. |
 | `OfficeUploadTest` | 91 | Celá cesta pro PDF, fotky a Office soubory přes `MultipartFile`, s deklarovaným content typem i bez něj. |
 | `web/MultipartFileExtensionsTest` | 95 | Že extension je bezpečná konstrukcí (deklarovaný typ se ověřuje, `size` se neuvěří). |
+| `autoconfigure/WithoutSpringWebTest` | 84 | Pustí celou knihovnu s **úplně skrytým artefaktem `spring-web`**. Drží u pravdy tvrzení, že MVC integrace nic nestojí — jeden neopatrný import v autokonfiguraci a každý ne-webový konzument dostane `NoClassDefFoundError` při startu. Součástí je guard, který ověřuje, že filtr opravdu filtruje. |
 | `web/FileForgeProblemDetailsHandlerTest` | 92 | Mapování statusů, problem extensions, neunikání interních detailů. |
 | `naming/DefaultObjectKeyGeneratorTest` | 88 | Tři strategie, unikátnost, a že se datum bere z **konfigurované** zóny. |
 | `autoconfigure/FileForgeWebAutoConfigurationTest` | 62 | Že je advice defaultně vypnutý a neaktivuje se mimo web. |
@@ -895,7 +896,7 @@ zbytku a každý se dá spustit izolovaně.
 | Sekce | Co je důležité |
 |---|---|
 | `plugins` | `kotlin.jvm`, `kotlin.plugin.spring`, `dokka 2.0.0`, `nmcp.aggregation`, `java-library`, `maven-publish`, `signing`. **Žádný kapt** — viz sekce 15. |
-| `dependencies` | AWS SDK je **`implementation`**, ne `api` → v POM skončí jako `runtime` a nestojí konzumentovi na compile classpath. `slf4j-api` deklarovaná. `spring-boot-autoconfigure` a `spring-web` `compileOnly`. |
+| `dependencies` | AWS SDK je **`implementation`**, ne `api` → v POM skončí jako `runtime` a nestojí konzumentovi na compile classpath. `slf4j-api` deklarovaná. `spring-boot-autoconfigure` a `spring-web` `compileOnly`. Z `awssdk:s3` je vyloučen `netty-nio-client`: knihovna staví jen synchronní `S3Client`, takže async Netty stack byl 4 MB kódu, který se nikdy nespustí. Výsledek: 37 artefaktů / 10,7 MB místo 48 / 14,7 MB. |
 | `kotlin { explicitApi() }` | Vynucuje explicitní viditelnost a návratové typy na celé veřejné ploše. Ověřeno: odebrání `public` build shodí. |
 | `java` | JVM toolchain 21, `withSourcesJar()`, `withJavadocJar()`. |
 | `tasks.named<Jar>("javadocJar")` | `from(tasks.named("dokkaJavadoc"))`. Bez tohoto `withJavadocJar()` zabalí výstup tasku `javadoc`, který tady nemá Java sources → `1.0.0` publikovalo **prázdný javadoc jar**, přestože Dokku aplikovalo. |

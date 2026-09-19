@@ -20,7 +20,13 @@ dependencies {
     // the StorageBackend SPI. Exposing it on every consumer's compile classpath
     // invited them to depend on it, and structurally undermined the abstraction.
     implementation(platform("software.amazon.awssdk:bom:2.30.1"))
-    implementation("software.amazon.awssdk:s3")
+    implementation("software.amazon.awssdk:s3") {
+        // The SDK ships both HTTP clients by default. This library only ever
+        // builds a synchronous S3Client, so the async Netty stack is dead weight
+        // on every consumer - a third of the download for code that never runs.
+        // A consumer who needs the async client can depend on it themselves.
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+    }
 
     implementation("org.slf4j:slf4j-api:2.0.16")
 
@@ -146,4 +152,3 @@ nmcpAggregation {
 
     publishAllProjectsProbablyBreakingProjectIsolation()
 }
-

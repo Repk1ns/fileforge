@@ -31,7 +31,10 @@ site.
 - Kotlin `2.1.10`, JVM 21, AWS SDK v2, Spring Boot `3.5.x`.
 - Works against AWS S3, Versity Gateway, MinIO, Cloudflare R2 or LocalStack.
 - The AWS SDK is an implementation detail: it is not on your compile classpath.
-- Usable outside a web application; the Spring MVC integration is optional.
+- Usable outside a web application; the Spring MVC integration is optional and
+  adds nothing to your runtime classpath.
+- One dependency line, nothing else to add. 124 kB jar; 10.7 MB resolved,
+  almost all of it the AWS SDK.
 
 > **Integrating this into a project?** Jump to
 > [Ready-made setup: documents and photos](#ready-made-setup-documents-and-photos)
@@ -80,6 +83,28 @@ Maven:
 
 Nothing else. No `@EnableFileForge`, no `@Import`, no bean declarations — the
 auto-configuration activates on its own.
+
+### What that actually pulls in
+
+| | |
+| --- | --- |
+| The jar itself | 124 kB, 67 classes |
+| Declared dependencies | `kotlin-stdlib`, `awssdk:s3` (runtime), `slf4j-api` (runtime) |
+| Resolved runtime classpath | 37 artifacts, 10.7 MB — 5.6 MB of it the AWS SDK itself |
+| Spring dependencies added | **none** |
+
+`spring-boot-autoconfigure` and `spring-web` are `compileOnly`: they are needed
+to build the library, never to run it. Your Spring Boot application already has
+them, so the auto-configuration and the `MultipartFile` extension just work; an
+application that has neither still starts, and the optional web pieces quietly
+back off. There is a test that runs the whole library with the entire
+`spring-web` artifact hidden from the classpath, so this cannot silently stop
+being true.
+
+The AWS SDK's async Netty client is excluded — this library only ever builds a
+synchronous `S3Client`, and shipping Netty cost every consumer 4 MB for code
+that never ran. If you need the async client for your own purposes, depend on
+`software.amazon.awssdk:netty-nio-client` directly.
 
 ---
 
