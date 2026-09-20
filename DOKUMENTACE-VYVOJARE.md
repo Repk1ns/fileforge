@@ -495,25 +495,32 @@ přeskakoval; teď je to dokumentované a konfigurovatelné rozhodnutí.
 
 ## 9. `naming/` — generování klíčů
 
-### `ObjectKeyGenerators.kt` (58 ř.)
+### `YearUuidKeyGenerator.kt` (43 ř.)
 
-Obsahuje enum `NamingStrategy` a `DefaultObjectKeyGenerator`.
+Jediné rozvržení klíče, které knihovna dodává:
 
-| Strategie | Výsledek |
-|---|---|
-| `DATE_UUID` (default) | `documents/2026/09/17/<uuid>.pdf` |
-| `UUID` | `documents/<uuid>.pdf` |
-| `YEAR_UUID` | `documents/2026_<uuid>.pdf` — rozvržení `1.x`, kvůli kompatibilitě |
+```
+documents/2026_1f7a8b2c-9d4e-4f31-b0a7-5c6e2f1a3d90.pdf
+└───┬───┘ └┬─┘ └──────────────────┬──────────────────┘└┬─┘
+  folder   rok            náhodné UUID               přípona
+```
 
-`Clock` **i** `ZoneId` jsou parametry konstruktoru. `1.0.0` používal
-`Year.now()`, tedy systémovou zónu — nepřipnuté a netestovatelné. Test
-`…should derive the date in the configured zone, not the system default`
-ověřuje, že 23:30 UTC sedmnáctého je v Tokiu už osmnáctého.
+Dodané jméno souboru se do klíče **nedostane** — jen přípona, a to až poté, co
+`FileNames.extensionOf` potvrdí, že to přípona vůbec může být. Klíč tedy nejde
+ovlivnit tím, co uživatel nahraje, a dva uploady téhož souboru nikdy nekolidují.
+
+`Clock` **i** `ZoneId` jsou parametry konstruktoru, takže generování je
+deterministické a hranice roku testovatelná (`should take the year from the
+configured zone, not the system default`). Jako konfigurační property zóna není
+— rozhoduje jednu hodinu do roka a nestojí za řádek v referenční tabulce.
 
 `folder` se normalizuje `trim('/')`, takže `/documents/` i `documents` dají
 stejný prefix.
 
----
+> Dřív tu byly tři strategie (`date-uuid`, `uuid`, `year-uuid`) a enum
+> `NamingStrategy`. Zůstala jedna: víc rozvržení znamenalo konfigurační property,
+> výčtový typ a `when` v generátoru za možnost, kterou nikdo nevyužil. Kdo chce
+> jiné, implementuje `ObjectKeyGenerator` — ta cesta tu byla i předtím.
 
 ## 10. `internal/` — neveřejné vnitřnosti
 

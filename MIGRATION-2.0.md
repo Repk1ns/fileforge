@@ -123,19 +123,15 @@ as soon as the dependency is present and will fail at startup if
 `fileforge.s3.bucket` is missing. To keep the dependency without activating it,
 set `fileforge.provider` to anything else — for example `none`.
 
-## 4. Keys keep their old layout only if you ask
+## 4. Keys keep the 1.x layout
 
-The default is now `date-uuid` (`documents/2026/09/17/<uuid>.pdf`). 1.x produced
-`documents/2026_<uuid>.pdf`. **Existing keys keep working** — they are stored in
-your database and read back verbatim — but new uploads land in the new layout.
+`<folder>/<year>_<uuid>.<ext>` — the same shape 1.x produced, and now the only
+one. Existing keys keep working unchanged; they live in your database and are
+read back verbatim.
 
-To keep generating the 1.x layout:
-
-```yaml
-fileforge:
-  naming:
-    strategy: year-uuid
-```
+What did change: the uploaded file name no longer influences the key at all
+(1.x kept the prefix of the `objectKey` argument you passed), and the extension
+is checked to be a plausible one before it is used.
 
 ## 5. The AWS SDK left your compile classpath
 
@@ -215,7 +211,6 @@ handling in charge.
 - [ ] Confirm the MIME whitelist covers everything you store (validation is now unconditional)
 - [ ] Wrap `list()` in a pagination loop if you relied on getting every key
 - [ ] Use `read(key) { }` or `readBytes(key)` instead of `download()`
-- [ ] Set `naming.strategy: year-uuid` if you want the old key layout
 - [ ] Declare the AWS SDK yourself if your code imports it
 - [ ] Drop `S3Client` / `S3Presigner` overrides, or replace with a `StorageBackend` bean
 - [ ] Optional: move per-category folders and limits into `fileforge.profiles`

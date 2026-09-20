@@ -7,9 +7,8 @@ import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.internal.s3.S3StorageBackend
 import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileUpload
-import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
+import net.mimochodek.fileforge.naming.YearUuidKeyGenerator
 import net.mimochodek.fileforge.spi.BackendPutRequest
-import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.validation.DefaultFileValidator
 import org.junit.jupiter.api.AfterAll
@@ -79,7 +78,7 @@ class FileForgeIntegrationTest {
         backend = S3StorageBackend(client, presigner, BUCKET)
         storage = DefaultFileStorage(
             backend = backend,
-            keyGenerator = DefaultObjectKeyGenerator(NamingStrategy.DATE_UUID),
+            keyGenerator = YearUuidKeyGenerator(),
             validator = DefaultFileValidator(MAX_SIZE, listOf("application/pdf", "image/jpeg")),
             maxFileSize = MAX_SIZE,
             inMemoryThreshold = 128,
@@ -103,7 +102,7 @@ class FileForgeIntegrationTest {
 
         val stored = store(folder)
 
-        assertTrue(Regex("$folder/\\d{4}/\\d{2}/\\d{2}/$UUID_PATTERN\\.pdf").matches(stored.key), stored.key)
+        assertTrue(Regex("${folder}/\\d{4}_$UUID_PATTERN\\.pdf").matches(stored.key), stored.key)
         assertEquals("application/pdf", stored.contentType)
         assertEquals(Fixtures.PDF.size.toLong(), stored.size)
         assertTrue(!stored.checksum.isNullOrBlank(), "the backend should report a checksum")

@@ -361,8 +361,7 @@ fileforge:
     path-style-access: true        # default: true (self-hosted). false for AWS.
 
   naming:
-    strategy: date-uuid            # date-uuid | uuid | year-uuid
-    keep-extension: true
+    keep-extension: true           # keep the original extension in the key
 
   validation:                      # storage-agnostic — applies to every backend
     max-file-size: 50MB
@@ -425,16 +424,26 @@ lines and no code change.
 
 ### Keys
 
-| `naming.strategy` | Example key |
-| --- | --- |
-| `date-uuid` (default) | `documents/2026/09/17/1f7a….pdf` |
-| `uuid` | `documents/1f7a….pdf` |
-| `year-uuid` | `documents/2026_1f7a….pdf` (the 1.x layout) |
+A **key** is the full path of an object inside the bucket, and it is what
+`store()` returns and what you persist:
 
-Keys are generated, never taken from the upload, so a hostile file name cannot
-influence where the object lands — the only thing the library reads from the
-name is its extension, and that is checked to be a plausible one before it goes
-anywhere near the key.
+```
+documents/2026_1f7a8b2c-9d4e-4f31-b0a7-5c6e2f1a3d90.pdf
+└───┬───┘ └┬─┘ └──────────────────┬──────────────────┘└┬─┘
+  folder   year          random UUID                extension
+```
+
+S3 has no real folders — the slashes are just characters in the key, and the
+"folder" comes from `folder` or the profile you store under.
+
+**The library generates the key; the uploaded file name never appears in it.**
+Only the extension carries over, and only after it has been checked that it
+could be an extension at all. A user uploading `../../etc/passwd` therefore
+cannot influence where the object lands, and two uploads of the same file never
+collide.
+
+One layout ships, because one is enough. If you need another, implement
+`ObjectKeyGenerator` and publish it as a bean.
 
 ### Reference
 
@@ -447,9 +456,7 @@ anywhere near the key.
 | `fileforge.s3.access-key` | no | — | Omit with `secret-key` to use the AWS default credential chain |
 | `fileforge.s3.secret-key` | no | — | Must be set together with `access-key` |
 | `fileforge.s3.path-style-access` | no | `true` | `false` for real AWS S3 |
-| `fileforge.naming.strategy` | no | `date-uuid` | Key layout |
 | `fileforge.naming.keep-extension` | no | `true` | Keep the original extension in the key |
-| `fileforge.naming.zone` | no | `Z` | Zone the date path is derived in |
 | `fileforge.validation.max-file-size` | no | `50MB` | Enforced against measured content |
 | `fileforge.validation.allowed-mime-types` | no | jpeg/png/webp/pdf | MIME whitelist; must not be empty |
 | `fileforge.validation.verify-magic-bytes` | no | `true` | Content must match its declared type |

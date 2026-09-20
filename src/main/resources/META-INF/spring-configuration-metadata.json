@@ -50,25 +50,11 @@
       "defaultValue": "s3"
     },
     {
-      "name": "fileforge.naming.strategy",
-      "type": "net.mimochodek.fileforge.naming.NamingStrategy",
-      "sourceType": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
-      "description": "Object key layout. date-uuid: documents/2026/09/17/<uuid>.pdf. uuid: documents/<uuid>.pdf. year-uuid: the 1.x layout, documents/2026_<uuid>.pdf.",
-      "defaultValue": "date-uuid"
-    },
-    {
       "name": "fileforge.naming.keep-extension",
       "type": "java.lang.Boolean",
       "sourceType": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
       "description": "Whether the generated key keeps the original file extension.",
       "defaultValue": true
-    },
-    {
-      "name": "fileforge.naming.zone",
-      "type": "java.time.ZoneId",
-      "sourceType": "net.mimochodek.fileforge.autoconfigure.NamingProperties",
-      "description": "Time zone the date path is derived in. Pinned rather than following the system default, so keys are reproducible across hosts.",
-      "defaultValue": "Z"
     },
     {
       "name": "fileforge.validation.max-file-size",

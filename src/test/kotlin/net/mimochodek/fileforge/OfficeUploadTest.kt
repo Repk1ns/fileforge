@@ -1,7 +1,6 @@
 package net.mimochodek.fileforge
 
-import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
-import net.mimochodek.fileforge.naming.NamingStrategy
+import net.mimochodek.fileforge.naming.YearUuidKeyGenerator
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.testsupport.InMemoryStorageBackend
 import net.mimochodek.fileforge.validation.DefaultFileValidator
@@ -23,7 +22,7 @@ class OfficeUploadTest {
 
     private val storage: FileStorage = DefaultFileStorage(
         backend = backend,
-        keyGenerator = DefaultObjectKeyGenerator(NamingStrategy.DATE_UUID),
+        keyGenerator = YearUuidKeyGenerator(),
         validator = DefaultFileValidator(
             maxFileSize = 20 * 1024 * 1024,
             allowedMimeTypes = listOf(

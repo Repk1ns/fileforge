@@ -3,7 +3,7 @@ package net.mimochodek.fileforge.autoconfigure
 import net.mimochodek.fileforge.DefaultFileStorage
 import net.mimochodek.fileforge.FileStorage
 import net.mimochodek.fileforge.StorageProfile
-import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
+import net.mimochodek.fileforge.naming.YearUuidKeyGenerator
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.spi.ObjectKeyGenerator
 import net.mimochodek.fileforge.spi.StorageBackend
@@ -13,7 +13,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
-import java.time.Clock
 
 /**
  * Backend-agnostic wiring: the naming policy, the validator and the storage
@@ -30,12 +29,7 @@ public class FileForgeAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public fun fileForgeObjectKeyGenerator(properties: FileForgeProperties): ObjectKeyGenerator =
-        DefaultObjectKeyGenerator(
-            strategy = properties.naming.strategy,
-            keepExtension = properties.naming.keepExtension,
-            clock = Clock.system(properties.naming.zone),
-            zone = properties.naming.zone,
-        )
+        YearUuidKeyGenerator(keepExtension = properties.naming.keepExtension)
 
     @Bean
     @ConditionalOnMissingBean

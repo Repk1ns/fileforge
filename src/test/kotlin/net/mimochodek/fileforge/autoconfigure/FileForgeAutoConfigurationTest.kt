@@ -2,7 +2,6 @@ package net.mimochodek.fileforge.autoconfigure
 
 import io.mockk.mockk
 import net.mimochodek.fileforge.FileStorage
-import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.spi.ObjectKeyGenerator
 import net.mimochodek.fileforge.spi.StorageBackend
@@ -15,7 +14,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
-import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -142,9 +140,7 @@ class FileForgeAutoConfigurationTest {
     fun `should bind storage-agnostic policy outside the provider prefix`() {
         runner.withPropertyValues(
             "fileforge.s3.bucket=my-bucket",
-            "fileforge.naming.strategy=year-uuid",
             "fileforge.naming.keep-extension=false",
-            "fileforge.naming.zone=Europe/Prague",
             "fileforge.validation.max-file-size=2MB",
             "fileforge.validation.allowed-mime-types=application/pdf,image/png",
             "fileforge.validation.verify-magic-bytes=false",
@@ -154,9 +150,7 @@ class FileForgeAutoConfigurationTest {
             context.startupFailure?.let { throw it }
             val properties = context.getBean(FileForgeProperties::class.java)
 
-            assertEquals(NamingStrategy.YEAR_UUID, properties.naming.strategy)
             assertEquals(false, properties.naming.keepExtension)
-            assertEquals(ZoneId.of("Europe/Prague"), properties.naming.zone)
             assertEquals(2 * 1024 * 1024L, properties.validation.maxFileSize.toBytes())
             assertEquals(listOf("application/pdf", "image/png"), properties.validation.allowedMimeTypes)
             assertEquals(false, properties.validation.verifyMagicBytes)
@@ -173,7 +167,6 @@ class FileForgeAutoConfigurationTest {
             val s3 = context.getBean(S3Properties::class.java)
 
             assertEquals("s3", properties.provider)
-            assertEquals(NamingStrategy.DATE_UUID, properties.naming.strategy)
             assertEquals(true, properties.naming.keepExtension)
             assertEquals(52_428_800, properties.validation.maxFileSize.toBytes())
             assertEquals(

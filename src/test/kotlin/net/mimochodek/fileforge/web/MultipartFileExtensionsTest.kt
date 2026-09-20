@@ -4,8 +4,7 @@ import net.mimochodek.fileforge.DefaultFileStorage
 import net.mimochodek.fileforge.FileStorage
 import net.mimochodek.fileforge.exception.ContentMismatchException
 import net.mimochodek.fileforge.exception.FileSizeExceededException
-import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
-import net.mimochodek.fileforge.naming.NamingStrategy
+import net.mimochodek.fileforge.naming.YearUuidKeyGenerator
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.testsupport.InMemoryStorageBackend
 import net.mimochodek.fileforge.validation.DefaultFileValidator
@@ -26,7 +25,7 @@ class MultipartFileExtensionsTest {
 
     private val storage: FileStorage = DefaultFileStorage(
         backend = backend,
-        keyGenerator = DefaultObjectKeyGenerator(NamingStrategy.UUID),
+        keyGenerator = YearUuidKeyGenerator(),
         validator = DefaultFileValidator(MAX_SIZE, listOf("application/pdf", "image/jpeg")),
         maxFileSize = MAX_SIZE,
     )

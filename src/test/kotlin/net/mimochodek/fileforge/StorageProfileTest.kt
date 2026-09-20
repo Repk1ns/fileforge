@@ -6,8 +6,7 @@ import net.mimochodek.fileforge.exception.UnknownStorageProfileException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileUpload
-import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
-import net.mimochodek.fileforge.naming.NamingStrategy
+import net.mimochodek.fileforge.naming.YearUuidKeyGenerator
 import net.mimochodek.fileforge.spi.FileCandidate
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.testsupport.Fixtures
@@ -39,7 +38,7 @@ class StorageProfileTest {
 
     private fun storage(profiles: Map<String, StorageProfile>) = DefaultFileStorage(
         backend = backend,
-        keyGenerator = DefaultObjectKeyGenerator(NamingStrategy.UUID),
+        keyGenerator = YearUuidKeyGenerator(),
         validator = globalValidator,
         maxFileSize = 1024 * 1024,
         profiles = profiles,

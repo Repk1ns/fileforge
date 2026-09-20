@@ -1,12 +1,9 @@
 package net.mimochodek.fileforge.autoconfigure
 
-import net.mimochodek.fileforge.naming.NamingStrategy
 import net.mimochodek.fileforge.validation.UnknownTypePolicy
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.util.unit.DataSize
 import java.nio.file.Path
-import java.time.ZoneId
-import java.time.ZoneOffset
 
 /**
  * Storage-agnostic configuration, bound to `fileforge`.
@@ -106,15 +103,14 @@ public class ProblemDetailsProperties(
     public val enabled: Boolean = false,
 )
 
-/** How object keys are built - `fileforge.naming`. */
+/**
+ * How object keys are built - `fileforge.naming`.
+ *
+ * There is one layout, `<folder>/<year>_<uuid>.<ext>`. To use a different one,
+ * publish your own [net.mimochodek.fileforge.spi.ObjectKeyGenerator] bean.
+ */
 public class NamingProperties(
-    public val strategy: NamingStrategy = NamingStrategy.DATE_UUID,
     public val keepExtension: Boolean = true,
-    /**
-     * Time zone the date path is derived in. Pinned to UTC by default rather
-     * than following the system default, so keys are reproducible across hosts.
-     */
-    public val zone: ZoneId = ZoneOffset.UTC,
 )
 
 /** Upload policy - `fileforge.validation`. Applied to every store, always. */

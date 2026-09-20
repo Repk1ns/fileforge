@@ -6,8 +6,7 @@ import net.mimochodek.fileforge.exception.FileSizeExceededException
 import net.mimochodek.fileforge.exception.UnsupportedFileTypeException
 import net.mimochodek.fileforge.model.ContentSource
 import net.mimochodek.fileforge.model.FileUpload
-import net.mimochodek.fileforge.naming.DefaultObjectKeyGenerator
-import net.mimochodek.fileforge.naming.NamingStrategy
+import net.mimochodek.fileforge.naming.YearUuidKeyGenerator
 import net.mimochodek.fileforge.spi.FileValidator
 import net.mimochodek.fileforge.testsupport.Fixtures
 import net.mimochodek.fileforge.testsupport.InMemoryStorageBackend
@@ -43,7 +42,7 @@ class DefaultFileStorageTest {
         inMemoryThreshold: Long = 1024,
     ) = DefaultFileStorage(
         backend = backend,
-        keyGenerator = DefaultObjectKeyGenerator(NamingStrategy.UUID, clock = clock),
+        keyGenerator = YearUuidKeyGenerator(clock = clock),
         validator = validator,
         maxFileSize = maxFileSize,
         inMemoryThreshold = inMemoryThreshold,
