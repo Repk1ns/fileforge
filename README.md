@@ -1,79 +1,79 @@
 # FileForge
 
-A reusable Spring Boot auto-configuration library that centralises file storage
-for an application. S3 is the backend that ships; others are selectable by
-configuration without changing a line of consumer code.
+A Spring Boot library that centralises file storage for an application. Add the
+dependency, configure a bucket, inject `FileStorage`. S3 is the backend that
+ships; others are selectable by configuration without changing consumer code.
 
 It is a **plain library JAR** — no `main()`, no `@SpringBootApplication` —
 consumed as a normal Maven dependency.
-
-Adding it to a project is three steps:
-
-1. Add the dependency.
-2. Configure `fileforge` in `application.yaml`.
-3. Inject `FileStorage`.
 
 ```kotlin
 @Service
 class DocumentService(private val storage: FileStorage) {
 
-    fun upload(file: MultipartFile): StoredFile = storage.store(file, folder = "documents")
+    fun upload(file: MultipartFile): String = storage.store(file, profile = "documents").key
 
-    fun link(key: String): URI = storage.downloadUrl(key)
+    fun download(key: String): ByteArray = storage.readBytes(key)
 }
 ```
 
-That is the whole integration. Sanitization, size limits, MIME whitelisting,
-magic-byte verification and key generation all happen inside `store()`, so there
-is no path that writes unvalidated content and nothing to remember at the call
-site.
+Sanitization, size limits, MIME whitelisting, magic-byte verification and key
+generation all happen inside `store()`. There is no path that writes
+unvalidated content and nothing to remember at the call site.
 
 - Kotlin `2.1.10`, JVM 21, AWS SDK v2, Spring Boot `3.5.x`.
 - Works against AWS S3, Versity Gateway, MinIO, Cloudflare R2 or LocalStack.
-- The AWS SDK is an implementation detail: it is not on your compile classpath.
-- Usable outside a web application; the Spring MVC integration is optional and
-  adds nothing to your runtime classpath.
-- One dependency line, nothing else to add. 124 kB jar; 10.7 MB resolved,
-  almost all of it the AWS SDK.
+- Adds **no Spring dependency** to your runtime classpath; the AWS SDK is not on
+  your compile classpath.
+- 124 kB jar, 37 artifacts / 10.7 MB resolved, almost all of it the AWS SDK.
 
-> **Integrating this into a project?** Jump to
-> [Ready-made setup: documents and photos](#ready-made-setup-documents-and-photos)
-> for a complete copy-paste configuration and a working service, then read
-> [Common mistakes](#common-mistakes) — it lists the four things that go wrong.
+---
+
+> ## Integrating this library? Read this section, then stop.
 >
-> Upgrading from `1.0.x`? See [MIGRATION-2.0.md](MIGRATION-2.0.md).
+> [**Integration guide**](#integration-guide) is a complete, ordered, copy-paste
+> procedure. Everything below it is reference material you only need when you
+> want something the guide does not cover.
+>
+> Four things are easy to get wrong and are called out in the guide:
+> Spring Boot's own 1 MB upload limit, the required `import` for the
+> `MultipartFile` extension, the fact that Office MIME types are not whitelisted
+> by default, and that the library stores no file name.
 
 ---
 
 ## Contents
 
-- [Adding the dependency](#adding-the-dependency)
-- [Ready-made setup: documents and photos](#ready-made-setup-documents-and-photos)
-- [Common mistakes](#common-mistakes)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Serving files: presigned URLs or streaming?](#serving-files-presigned-urls-or-streaming)
-- [Error handling](#error-handling)
+- [Integration guide](#integration-guide) — start here
+- [What the library does and does not do](#what-the-library-does-and-does-not-do)
+- [API reference](#api-reference)
+- [Configuration reference](#configuration-reference)
 - [Supported file types](#supported-file-types)
+- [Serving files: presigned URLs or streaming?](#serving-files-presigned-urls-or-streaming)
+- [Troubleshooting](#troubleshooting)
 - [Extending](#extending)
-- [Commands](#commands)
-- [Releasing](#releasing)
+- [Commands and releasing](#commands-and-releasing)
 
 ---
 
-## Adding the dependency
+# Integration guide
 
-Published to **Maven Central** — no repository declaration, no credentials.
+Follow these six steps in order. They assume a Spring Boot 3.5 web application
+storing user-uploaded documents and photos.
+
+## Step 1 — Add the dependency
+
+Published to Maven Central. No repository declaration, no credentials.
 
 ```kotlin
+// build.gradle.kts
 dependencies {
     implementation("net.mimochodek:fileforge:2.0.0")
 }
 ```
 
-Maven:
-
 ```xml
+<!-- pom.xml -->
 <dependency>
     <groupId>net.mimochodek</groupId>
     <artifactId>fileforge</artifactId>
@@ -81,53 +81,31 @@ Maven:
 </dependency>
 ```
 
-Nothing else. No `@EnableFileForge`, no `@Import`, no bean declarations — the
+Nothing else. **Do not** add `@EnableFileForge`, `@Import`, a `@Configuration`
+class, or an `S3Client` bean — none of those exist or are needed. The
 auto-configuration activates on its own.
 
-### What that actually pulls in
+> If the version does not resolve, it has not been released yet. Build it from
+> the FileForge checkout with `./gradlew publishToMavenLocal` and add
+> `mavenLocal()` to your repositories.
 
-| | |
-| --- | --- |
-| The jar itself | 124 kB, 67 classes |
-| Declared dependencies | `kotlin-stdlib`, `awssdk:s3` (runtime), `slf4j-api` (runtime) |
-| Resolved runtime classpath | 37 artifacts, 10.7 MB — 5.6 MB of it the AWS SDK itself |
-| Spring dependencies added | **none** |
+## Step 2 — Configure `application.yaml`
 
-`spring-boot-autoconfigure` and `spring-web` are `compileOnly`: they are needed
-to build the library, never to run it. Your Spring Boot application already has
-them, so the auto-configuration and the `MultipartFile` extension just work; an
-application that has neither still starts, and the optional web pieces quietly
-back off. There is a test that runs the whole library with the entire
-`spring-web` artifact hidden from the classpath, so this cannot silently stop
-being true.
-
-The AWS SDK's async Netty client is excluded — this library only ever builds a
-synchronous `S3Client`, and shipping Netty cost every consumer 4 MB for code
-that never ran. If you need the async client for your own purposes, depend on
-`software.amazon.awssdk:netty-nio-client` directly.
-
----
-
-## Ready-made setup: documents and photos
-
-The common case: a web application storing user-uploaded photos (JPEG/PNG) and
-attachments (PDF, Word, Excel), a few MB each. Copy the whole block.
-
-### `application.yaml`
+Copy this whole block and change `bucket`, `endpoint` and the credentials.
 
 ```yaml
 fileforge:
   s3:
-    bucket: my-app
-    # Self-hosted S3 gateway (Versity Gateway, MinIO, …). Omit `endpoint` for real AWS.
-    endpoint: http://nas.local:7070
-    access-key: ${S3_ACCESS_KEY}
+    bucket: my-app                 # REQUIRED — the only mandatory property
+    endpoint: http://nas.local:7070   # self-hosted gateway; DELETE this line for real AWS
+    access-key: ${S3_ACCESS_KEY}      # DELETE both keys for real AWS (uses the IAM role)
     secret-key: ${S3_SECRET_KEY}
-    path-style-access: true          # default; self-hosted gateways need it
+    region: us-east-1
+    path-style-access: true        # true for self-hosted gateways, false for real AWS
 
   validation:
     max-file-size: 20MB
-    allowed-mime-types:
+    allowed-mime-types:            # NOTHING outside this list can be stored
       - image/jpeg
       - image/png
       - image/webp
@@ -135,7 +113,7 @@ fileforge:
       - application/vnd.openxmlformats-officedocument.wordprocessingml.document   # .docx
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet         # .xlsx
 
-  profiles:
+  profiles:                        # named categories; use instead of hardcoding folders
     photos:
       folder: photos
       validation:
@@ -144,24 +122,31 @@ fileforge:
     attachments:
       folder: attachments
       validation:
-        max-file-size: 20MB          # inherits the MIME whitelist above
+        max-file-size: 20MB        # inherits the MIME whitelist above
 
-# REQUIRED: Spring Boot's own upload limit defaults to 1MB and applies FIRST.
-# Without this, anything over 1MB is rejected before FileForge ever sees it.
+# REQUIRED. Spring Boot's own limit is 1MB and is applied BEFORE FileForge sees
+# the request. Without this, uploads over 1MB fail with Spring's
+# MaxUploadSizeExceededException and FileForge never runs.
 spring:
   servlet:
     multipart:
-      max-file-size: 20MB
+      max-file-size: 20MB          # must be >= fileforge.validation.max-file-size
       max-request-size: 25MB
 ```
 
-A profile that sets only `max-file-size` inherits the rest of the global policy,
-so `attachments` accepts all six types while `photos` accepts images only.
+Notes that change what you write:
 
-### Entity
+- **`bucket` must already exist on the storage side.** The library does not
+  create it.
+- A profile that sets only `max-file-size` inherits the rest of the global
+  policy. Above, `attachments` accepts all six types; `photos` accepts images.
+- Startup fails with a message naming the key if configuration is missing or
+  contradictory. That is intended — do not add `try/catch` around it.
 
-The library hands back **one string: the key**. Everything a human reads is
-yours.
+## Step 3 — Create the entity
+
+The library returns **one string: the key**. Everything a human reads is yours
+to store.
 
 ```kotlin
 @Entity
@@ -169,53 +154,49 @@ class Attachment(
     @Id @GeneratedValue
     val id: Long? = null,
 
-    /** All the library gives you, and all it needs back. */
+    /** What storage.store() returned. All the library needs back. */
     val storageKey: String,
 
-    /** Whatever your application calls this attachment — a title the user typed,
-     *  the original file name, a label from an enum. The library has no opinion. */
+    /** Whatever your application calls this attachment: a title the user typed,
+     *  the original file name, a label. The library stores none of these. */
     val name: String,
 
     val documentId: Long,
 )
 ```
 
-**The uploaded file name is not stored and not returned.** The key is generated
-and carries no meaning beyond its extension:
+**Do not add columns for content type or size** unless you want to list them
+without touching storage — `storage.metadata(key)` returns both.
 
-```
-documents/2026_1f7a8b2c-9d4e-4f31-b0a7-5c6e2f1a3d90.pdf
-```
+**Do not expect the uploaded file name anywhere.** The library takes only the
+extension from it and neither stores nor returns it. If your UI never shows an
+uploaded file name, you need no `name` column at all.
 
-That is deliberate. Whatever you want to show a user — the name they typed, the
-original file name, or nothing at all — is application data that belongs in the
-row you already have. Keeping it in two places invites the two from disagreeing,
-and reading it back from storage would cost a request per file: a list of 50
-attachments would be 50 round-trips for something one `SELECT` already had.
-
-If your UI never shows an uploaded file name, you need no such column at all —
-the key really is everything.
-
-Content type and size *are* readable with `metadata(key)`, so those need no
-columns unless you want to list them without touching storage.
-
-### Service
+## Step 4 — Write the service
 
 ```kotlin
 import net.mimochodek.fileforge.FileStorage
 import net.mimochodek.fileforge.model.FileMetadata
-import net.mimochodek.fileforge.web.store          // <-- the MultipartFile extension
+import net.mimochodek.fileforge.web.store        // REQUIRED for store(MultipartFile, …)
+import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
 
 @Service
 class AttachmentService(
-    private val storage: FileStorage,
+    private val storage: FileStorage,            // the only bean you inject
     private val repository: AttachmentRepository,
 ) {
 
     /** Validates, generates a key and writes — all inside store(). */
     fun upload(documentId: Long, name: String, file: MultipartFile): Attachment {
         val stored = storage.store(file, profile = "attachments")
+        return repository.save(
+            Attachment(storageKey = stored.key, name = name, documentId = documentId),
+        )
+    }
+
+    fun uploadPhoto(documentId: Long, name: String, file: MultipartFile): Attachment {
+        val stored = storage.store(file, profile = "photos")
         return repository.save(
             Attachment(storageKey = stored.key, name = name, documentId = documentId),
         )
@@ -228,27 +209,32 @@ class AttachmentService(
         storage.delete(attachment.storageKey)
         repository.delete(attachment)
     }
+
+    fun deleteAll(attachments: List<Attachment>) {
+        storage.deleteAll(attachments.map { it.storageKey })   // one request per 1000 keys
+        repository.deleteAll(attachments)
+    }
 }
 ```
 
-> **Naming the download.** A user-typed title usually has no extension, so
-> `downloadAs = attachment.name` would save a PDF as `Smlouva` with no suffix.
-> The key still ends in the extension, so append it:
->
-> ```kotlin
-> private val Attachment.downloadName: String
->     get() = storageKey.substringAfterLast('.', "")
->         .takeIf { it.isNotEmpty() }
->         ?.let { "$name.$it" }
->         ?: name
-> ```
+`import net.mimochodek.fileforge.web.store` is **not optional**.
+`store(file, …)` is an extension function, not a member of the interface; the
+code does not compile without it.
 
-### Controller
+## Step 5 — Serve the bytes
+
+Use this unless you have read
+[Serving files](#serving-files-presigned-urls-or-streaming) and concluded
+otherwise. It works in every deployment.
 
 ```kotlin
 @RestController
 @RequestMapping("/api/documents/{documentId}/attachments")
-class AttachmentController(private val service: AttachmentService) {
+class AttachmentController(
+    private val service: AttachmentService,
+    private val storage: FileStorage,
+    private val repository: AttachmentRepository,
+) {
 
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun upload(
@@ -257,193 +243,99 @@ class AttachmentController(private val service: AttachmentService) {
         @RequestPart("file") file: MultipartFile,
     ): AttachmentResponse = service.upload(documentId, name, file).toResponse()
 
-    /** Streams the file through the application — always works. */
     @GetMapping("/{id}")
-    fun download(@PathVariable id: Long): ResponseEntity<StreamingResponseBody> =
-        service.serve(id)
-}
-```
+    fun download(@PathVariable id: Long): ResponseEntity<StreamingResponseBody> {
+        val attachment = repository.findById(id).orElseThrow()
+        val meta = storage.metadata(attachment.storageKey)
 
-### Serving the bytes
-
-Pick one of the two. See
-[Serving files](#serving-files-presigned-urls-or-streaming) for which.
-
-```kotlin
-// A) Stream through the application. Works regardless of where storage lives.
-fun serve(attachment: Attachment): ResponseEntity<StreamingResponseBody> {
-    val meta = storage.metadata(attachment.storageKey)
-    return ResponseEntity.ok()
-        .contentType(MediaType.parseMediaType(meta.contentType))
-        .contentLength(meta.size)
-        .header(
-            HttpHeaders.CONTENT_DISPOSITION,
-            ContentDisposition.attachment().filename(attachment.downloadName).build().toString(),
-        )
-        .body(
-            StreamingResponseBody { out ->
-                storage.read(attachment.storageKey) { it.stream.copyTo(out) }
-            },
-        )
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(meta.contentType))
+            .contentLength(meta.size)
+            .header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDisposition.attachment().filename(attachment.downloadName).build().toString(),
+            )
+            .body(
+                StreamingResponseBody { out ->
+                    storage.read(attachment.storageKey) { it.stream.copyTo(out) }
+                },
+            )
+    }
 }
 
-// B) Hand the browser a temporary link and let it fetch from storage directly.
-//    Requires storage to be reachable from the user's browser.
-fun downloadLink(attachment: Attachment): URI =
-    storage.downloadUrl(
-        key = attachment.storageKey,
-        ttl = Duration.ofMinutes(15),
-        downloadAs = attachment.downloadName,   // the name your own row remembers
-    )
+/**
+ * A user-typed title has no extension, so a PDF would download as "Smlouva"
+ * with no suffix. The key ends in the extension, so take it from there.
+ */
+private val Attachment.downloadName: String
+    get() = storageKey.substringAfterLast('.', "")
+        .takeIf { it.isNotEmpty() }
+        ?.let { "$name.$it" }
+        ?: name
 ```
 
-### Optional: automatic error responses
+Read **only** with `storage.read(key) { … }` or `storage.readBytes(key)`. There
+is no unscoped `read(key)` returning an open stream, by design.
+
+## Step 6 — Decide on error responses
+
+Rejected uploads throw. Either map them yourself, or let the library do it:
 
 ```yaml
 fileforge:
   web:
     problem-details:
-      enabled: true
+      enabled: true      # off by default
 ```
 
-Turns rejected uploads into RFC 7807 responses (413 too large, 415 wrong type,
-404 missing, …) without writing a `@RestControllerAdvice`. Leave it off if you
-already have your own. See [Error handling](#error-handling).
+That publishes a `@RestControllerAdvice` turning every FileForge exception into
+an RFC 7807 response — 413 too large, 415 wrong type, 404 missing, 503
+unreachable. Leave it `false` if you already have your own advice, and map the
+table in [Errors](#errors) yourself.
 
----
+## Integration checklist
 
-## Common mistakes
-
-Four things that go wrong. The first two are by far the most common.
-
-### 1. Forgetting Spring Boot's own upload limit
-
-`spring.servlet.multipart.max-file-size` defaults to **1MB** and
-`max-request-size` to **10MB**. Spring rejects the request *before* FileForge
-sees it, so raising `fileforge.validation.max-file-size` alone changes nothing
-and you get Spring's `MaxUploadSizeExceededException`, not FileForge's
-`FileSizeExceededException`.
-
-Set both, with Spring's limit at least as high as FileForge's.
-
-### 2. Forgetting to import the `MultipartFile` extension
-
-`storage.store(file, …)` is a Kotlin extension function, not a member of the
-interface. Without the import it will not compile:
-
-```kotlin
-import net.mimochodek.fileforge.web.store
-```
-
-(It lives in a separate package because `spring-web` is a `compileOnly`
-dependency, which is what keeps the library usable outside web applications.)
-
-### 3. Expecting `list()` to return everything
-
-It returns **one page** — 1000 keys by default. This is deliberate; an
-unbounded listing pulls an entire bucket into memory. Loop over
-`nextPageToken`, as shown in [Listing](#listing).
-
-### 4. Trying to inject `S3Client`
-
-It is not a bean, on purpose — see [Extending](#extending). Configure the
-endpoint, credentials, region and path-style access instead; to replace the
-storage implementation entirely, publish a `StorageBackend` bean.
-
-### Integration checklist
-
-- [ ] `implementation("net.mimochodek:fileforge:2.0.0")`
-- [ ] `fileforge.s3.bucket` set — it is the only required property
+- [ ] `implementation("net.mimochodek:fileforge:2.0.0")` and nothing else added
+- [ ] `fileforge.s3.bucket` set, and that bucket exists on the storage side
 - [ ] `spring.servlet.multipart.max-file-size` ≥ `fileforge.validation.max-file-size`
-- [ ] Every content type you intend to store is in `allowed-mime-types`
-      (the default list is images + PDF only, **no Office formats**)
-- [ ] `import net.mimochodek.fileforge.web.store` where you upload
-- [ ] Persist `StoredFile.key`; keep any human-readable name in your own row
-- [ ] Reading with `read(key) { … }` or `readBytes(key)`
-- [ ] Bucket exists on the storage side — the library does not create it
+- [ ] Every content type you will store is in `allowed-mime-types`
+      (the default is images + PDF only — **no Office formats**)
+- [ ] `import net.mimochodek.fileforge.web.store` in every file that uploads
+- [ ] `FileStorage` injected; no `S3Client`, no `@Configuration` for FileForge
+- [ ] `StoredFile.key` persisted; any human-readable name kept in your own row
+- [ ] Reading via `read(key) { … }` or `readBytes(key)`
+- [ ] `list()` calls wrapped in a pagination loop, if you use it at all
 
 ---
 
-## Configuration
+# What the library does and does not do
 
-```yaml
-fileforge:
-  provider: s3                     # default: s3. Any other value deactivates FileForge.
+## Does
 
-  s3:
-    bucket: my-app-prod            # required
-    region: us-east-1              # default: us-east-1
-    endpoint: http://nas:7070      # OPTIONAL — omit for real AWS S3
-    access-key: ${S3_ACCESS_KEY}   # OPTIONAL — omit both keys to use the AWS
-    secret-key: ${S3_SECRET_KEY}   #            default credential chain
-    path-style-access: true        # default: true (self-hosted). false for AWS.
+| | |
+| --- | --- |
+| Generates the object key | `documents/2026_1f7a8b2c-….pdf` — never derived from the upload |
+| Measures the real size | the value you pass is a hint; the bytes are counted |
+| Enforces a size limit | against the measured size, aborting the read when exceeded |
+| Enforces a MIME whitelist | per profile or globally |
+| Verifies magic bytes | content must match its declared type |
+| Detects the content type | when you pass none, from magic bytes then extension |
+| Buffers safely | in memory to 1 MB, spilled to a temp file beyond |
+| Handles huge uploads | multipart above S3's 5 GiB single-request limit |
+| Translates failures | no AWS SDK type escapes the abstraction |
 
-  naming:
-    keep-extension: true           # keep the original extension in the key
+## Does not
 
-  validation:                      # storage-agnostic — applies to every backend
-    max-file-size: 50MB
-    allowed-mime-types: [image/jpeg, image/png, image/webp, application/pdf]
-    verify-magic-bytes: true
-    unknown-type-policy: allow     # allow | reject
+| | Do this instead |
+| --- | --- |
+| Store the uploaded file name | keep it in your own row, if you need it |
+| Create the bucket | create it on the storage side |
+| Copy or move objects | to archive, flag the row in your database |
+| Offer presigned uploads | upload through `store()` and keep the validation |
+| Authorize anything | check permissions before you call |
+| Scan for viruses, resize images, or keep an index | out of scope |
 
-  buffering:
-    in-memory-threshold: 1MB       # larger uploads spill to a temp file
-
-  web:
-    problem-details:
-      enabled: false               # opt-in RFC 7807 error responses
-
-  profiles:                        # optional named upload categories
-    avatars:
-      folder: avatars
-      validation: { max-file-size: 2MB, allowed-mime-types: [image/jpeg, image/png] }
-    documents:
-      folder: documents
-      validation: { max-file-size: 25MB, allowed-mime-types: [application/pdf] }
-```
-
-Only `fileforge.s3.bucket` is required. A missing or contradictory setting fails
-at startup with a message that names the key.
-
-### Self-hosted gateway (Versity Gateway, MinIO, …)
-
-```yaml
-fileforge:
-  s3:
-    bucket: my-app
-    endpoint: http://nas.local:7070
-    access-key: ${S3_ACCESS_KEY}
-    secret-key: ${S3_SECRET_KEY}
-    path-style-access: true     # default — gateways generally require it
-```
-
-This is the configuration the integration test suite runs against: 17 tests
-against a real `versity/versitygw` container covering upload, download,
-metadata round-trip, presigned GET and PUT, pagination, delimiter listing, copy,
-move, batch delete and multipart upload.
-
-### Real AWS S3
-
-Omit `endpoint`, omit both keys, and turn off path-style access:
-
-```yaml
-fileforge:
-  s3:
-    bucket: my-app-prod
-    region: eu-central-1
-    path-style-access: false
-```
-
-Credentials then come from the AWS default chain, so IAM roles, instance
-profiles, SSO and environment credentials all work — nothing extra to configure
-on ECS, EKS or EC2. Moving from a self-hosted gateway to AWS is these three
-lines and no code change.
-
-### Keys
-
-A **key** is the full path of an object inside the bucket, and it is what
-`store()` returns and what you persist:
+## The key
 
 ```
 documents/2026_1f7a8b2c-9d4e-4f31-b0a7-5c6e2f1a3d90.pdf
@@ -451,80 +343,49 @@ documents/2026_1f7a8b2c-9d4e-4f31-b0a7-5c6e2f1a3d90.pdf
   folder   year          random UUID                extension
 ```
 
-S3 has no real folders — the slashes are just characters in the key, and the
-"folder" comes from `folder` or the profile you store under.
+S3 has no real folders — the slashes are characters in the key. The folder
+comes from the profile, or from `FileUpload.folder`.
 
-**The library generates the key; the uploaded file name never appears in it.**
-Only the extension carries over, and only after it has been checked that it
-could be an extension at all. A user uploading `../../etc/passwd` therefore
-cannot influence where the object lands, and two uploads of the same file never
-collide.
-
-One layout ships, because one is enough. If you need another, implement
-`ObjectKeyGenerator` and publish it as a bean.
-
-### Reference
-
-| Key | Required | Default | Description |
-| --- | --- | --- | --- |
-| `fileforge.provider` | no | `s3` | Backend to activate; any other value deactivates the library |
-| `fileforge.s3.bucket` | **yes** | — | Bucket name |
-| `fileforge.s3.region` | no | `us-east-1` | S3 region |
-| `fileforge.s3.endpoint` | no | — | S3-compatible endpoint; omit for real AWS |
-| `fileforge.s3.access-key` | no | — | Omit with `secret-key` to use the AWS default credential chain |
-| `fileforge.s3.secret-key` | no | — | Must be set together with `access-key` |
-| `fileforge.s3.path-style-access` | no | `true` | `false` for real AWS S3 |
-| `fileforge.naming.keep-extension` | no | `true` | Keep the original extension in the key |
-| `fileforge.validation.max-file-size` | no | `50MB` | Enforced against measured content |
-| `fileforge.validation.allowed-mime-types` | no | jpeg/png/webp/pdf | MIME whitelist; must not be empty |
-| `fileforge.validation.verify-magic-bytes` | no | `true` | Content must match its declared type |
-| `fileforge.validation.unknown-type-policy` | no | `allow` | `reject` stores only verifiable content |
-| `fileforge.buffering.in-memory-threshold` | no | `1MB` | Larger uploads spill to a temp file |
-| `fileforge.buffering.temp-dir` | no | JVM temp dir | Where to spill |
-| `fileforge.web.problem-details.enabled` | no | `false` | Publish the RFC 7807 handler |
-| `fileforge.profiles.<name>.folder` | no | — | Folder for that profile |
-| `fileforge.profiles.<name>.validation.*` | no | inherits `fileforge.validation` | Per-profile overrides |
+The uploaded file name never appears. Only the extension carries over, and only
+after it has been checked that it could be an extension at all — so a user
+uploading `../../etc/passwd` cannot influence where the object lands, and two
+uploads of the same file never collide.
 
 ---
 
-## Usage
+# API reference
 
-### Storing
+`FileStorage` has nine methods. That is the whole consumer API.
 
-There is exactly one way in — `store(FileUpload)` — plus a thin extension for
-Spring MVC uploads that builds the `FileUpload` for you.
+## Storing
 
 ```kotlin
-// From a Spring MVC upload — the extension, which streams
-val stored: StoredFile = storage.store(file, folder = "documents")
+// From a Spring MVC upload. Streams; never holds the whole file in memory.
+fun FileStorage.store(
+    file: MultipartFile,
+    folder: String = "",
+    profile: String? = null,
+    metadata: Map<String, String> = emptyMap(),
+): StoredFile
 
-// …or with the folder and policy declared once in configuration
-val stored = storage.store(file, profile = "documents")
+// Everything else.
+fun store(upload: FileUpload): StoredFile
 
-// Anything else
-storage.store(
-    FileUpload(
-        fileName = "report.pdf",
-        content = ContentSource.Stream(inputStream),  // unknown length is fine
-        contentType = "application/pdf",              // or null to detect it
-        folder = "documents",
-        metadata = mapOf("owner" to userId),
-    ),
+data class FileUpload(
+    val fileName: String,                        // ONLY its extension is used
+    val content: ContentSource,
+    val contentType: String? = null,             // null = detect from the bytes
+    val folder: String = "",                     // ignored if the profile sets one
+    val metadata: Map<String, String> = emptyMap(),
+    val profile: String? = null,
 )
-```
 
-**Prefer `ContentSource.Stream`.** It is buffered only up to
-`fileforge.buffering.in-memory-threshold` (1MB) and spilled to a temporary file
-beyond that, so a 20MB upload never sits whole in the heap.
-`ContentSource.Bytes` loads everything into memory and is meant for content that
-is already there — a generated report, a thumbnail. There is deliberately no
-`store(fileName, bytes, …)` shorthand, because it makes the memory-hungry choice
-the convenient one.
+sealed interface ContentSource {
+    class Bytes(val value: ByteArray)                        // whole file in memory
+    class Stream(val stream: InputStream, val length: Long? = null)  // preferred
+    class LocalFile(val path: Path)
+}
 
-`StoredFile` carries everything worth persisting — usually you keep `key` and
-nothing else:
-
-```kotlin
 data class StoredFile(
     val key: String,          // persist this
     val contentType: String,  // declared or detected
@@ -534,162 +395,96 @@ data class StoredFile(
 )
 ```
 
-The uploaded file name is not here. Only its extension is used — for the key and,
-when you pass no `contentType`, for detection. Keep the name in your own row.
-
-The size limit applies to the bytes that arrive, not to any value you pass —
-`ContentSource.Stream(stream, length)` treats `length` as a hint only.
-
-### Reading
+**Prefer `ContentSource.Stream`.** It is buffered only to
+`fileforge.buffering.in-memory-threshold` and spilled to a temporary file
+beyond, so a 20 MB upload never sits whole in the heap. `Bytes` is for content
+already in memory — a generated report, a thumbnail. `length` is a hint and is
+never trusted for the size limit.
 
 ```kotlin
-// Scoped read — the backend connection cannot leak
-val text = storage.read(key) { it.stream.reader().readText() }
-
-// Whole object into memory, for small files
-val bytes = storage.readBytes(key)
-
-// Headers without transferring the body
-val metadata = storage.metadata(key)   // contentType, size, checksum, lastModified
+storage.store(
+    FileUpload(
+        fileName = "report.pdf",
+        content = ContentSource.Stream(inputStream),   // unknown length is fine
+        contentType = "application/pdf",
+        profile = "attachments",
+    ),
+)
 ```
 
-Reading is scoped on purpose: `read` hands the open object to your lambda and
-closes it afterwards, including when the lambda throws. There is no unscoped
-variant that returns an open `FileContent`, because that is a connection leak
-waiting for the first person who forgets.
-
-### Links
+## Reading
 
 ```kotlin
-storage.downloadUrl(key)                                       // 15 minutes
-storage.downloadUrl(key, Duration.ofHours(1))
-storage.downloadUrl(key, downloadAs = "Quarterly Report.pdf")  // saves as this
+fun <T> read(key: String, block: (FileContent) -> T): T   // always closes
+fun readBytes(key: String): ByteArray                     // whole object into memory
+fun metadata(key: String): FileMetadata                   // one HEAD request, no body
+
+data class FileMetadata(
+    val key: String,
+    val contentType: String,
+    val size: Long,
+    val checksum: String?,
+    val lastModified: Instant?,
+    val metadata: Map<String, String>,   // the map you passed to FileUpload
+)
 ```
 
-### Listing
+`read` is scoped on purpose: the object holds a pooled HTTP connection, and an
+API that hands that out unscoped leaks connections the first time someone
+forgets. `readBytes` loads everything — for large objects use `read(key) { }`
+and copy in chunks.
+
+## Managing
 
 ```kotlin
-var page = storage.list("documents/", limit = 500)
+fun exists(key: String): Boolean
+fun delete(key: String): Boolean              // idempotent; true if it existed
+fun deleteAll(keys: Collection<String>)       // batched, 1000 per request on S3
+fun list(prefix: String, limit: Int = 1000, pageToken: String? = null,
+         delimiter: String? = null): FilePage
+```
+
+`list` returns **one page**. To walk everything:
+
+```kotlin
+var page = storage.list("attachments/", limit = 500)
 while (true) {
     page.keys.forEach(::process)
-    page = storage.list("documents/", limit = 500, pageToken = page.nextPageToken ?: break)
+    page = storage.list("attachments/", limit = 500, pageToken = page.nextPageToken ?: break)
 }
-
-// Directory-style listing of a single level
-val level = storage.list("documents/", delimiter = "/")
-level.keys            // keys directly under documents/
-level.commonPrefixes  // documents/2026/, documents/2025/, ...
 ```
 
-### Managing
+With `delimiter = "/"`, `page.keys` holds only keys directly under the prefix
+and `page.commonPrefixes` holds the "subfolders".
+
+## Links
 
 ```kotlin
-storage.exists(key)
-storage.delete(key)             // idempotent; true if it existed
-storage.deleteAll(keys)         // batched, 1000 per request on S3
+fun downloadUrl(key: String, ttl: Duration = Duration.ofMinutes(15),
+                downloadAs: String? = null): URI
 ```
 
-Uploads larger than S3's 5 GiB single-request limit are sent as a multipart
-upload automatically; nothing to configure.
+A time-limited signed link. See
+[Serving files](#serving-files-presigned-urls-or-streaming) before using it —
+whether it works depends on who fetches the bytes.
 
-There is no `copy` or `move`. Relocating an object on S3 is a full server-side
-copy followed by a delete, it is not atomic, and it changes the key you have
-stored in your database. **To archive a file, mark it inactive in your own
-database and leave the object where it is** — no copying, atomic, instantly
-reversible, and the key never moves.
+## Errors
 
----
+Every failure is a `FileStorageException`. Subtypes carry the facts as
+properties, so you never parse a message:
 
-## Serving files: presigned URLs or streaming?
-
-A **presigned URL** is a time-limited signed link that lets its holder read (or
-write) an object without any storage credentials. The browser talks to the
-storage directly and the bytes never pass through your application.
-
-The question is not "browser or not" but **who fetches the bytes, and can that
-party reach the storage host?** A presigned URL contains the storage endpoint —
-`http://nas.local:7070/…` — so it only works for a fetcher that can resolve and
-reach it.
-
-| | Stream through the app | Presigned GET, fetched server-side | Presigned GET, fetched by the browser |
-| --- | --- | --- | --- |
-| Who fetches | your Spring app | another server (BFF, Next.js, worker) | the end user's browser |
-| Storage must be reachable from | your app | that server | the public internet |
-| Works with a LAN-only NAS | **yes** | **yes** | no |
-| Bytes pass through a server of yours | yes | yes, a different one | **no** |
-| Needs storage credentials | yes | **no** — that is the point | no |
-
-**Self-hosted gateway on a LAN, browser outside it.** The browser cannot reach
-`nas.local:7070`, so a presigned URL handed to it is a dead link. Stream through
-the application (variant A above).
-
-**Self-hosted gateway on a LAN, with a server-side consumer on that LAN** — a
-Next.js BFF, another service, a worker. Presigned GET works here, and it buys
-something real: that consumer gets **time-limited read access to one object
-without ever holding S3 credentials**. Your Spring application keeps the keys
-and the authorization logic and hands out a narrow capability instead.
-
-Be clear-eyed about what it does *not* buy: the bytes still travel through a
-server of yours, just a different one. Compared to streaming from Spring, you
-have moved the load rather than removed it. Where that pays off is when the
-other server does something useful with the bytes — `next/image` fetching a
-source image, optimizing it and caching the result means your Spring app never
-touches image traffic at all.
-
-> **The trap in this setup:** the presigned URL must stay server-side. Render it
-> into HTML — `<img src={presignedUrl}>` from a Server Component — and the
-> browser is suddenly the fetcher, pointed at a host it cannot reach. Fetch it
-> in the server-side code and re-serve the bytes (or an optimized derivative)
-> under your own origin.
-
-**Real AWS S3, or a gateway behind a public reverse proxy.** Now the browser can
-fetch directly, which is the case presigned URLs were designed for: no server of
-yours carries the traffic, and `downloadAs` makes the file save under its
-original name. Moving to this from the LAN setup is a configuration change.
-
-### Two things to get right either way
-
-**A presigned URL carries no authorization of its own.** Anyone holding it can
-read the object until it expires. Check that this user may see this file
-*before* you generate the link.
-
-**TTL trades cacheability against exposure.** The default is 15 minutes. A URL
-that changes on every request defeats HTTP caching and `next/image`'s cache,
-because both key on the URL — you can end up re-fetching the same object
-constantly. Lengthening the TTL fixes that and widens the window in which a
-leaked link still works. If you need both stable URLs and short exposure, serve
-through your own origin instead.
-
-### Why there is no presigned PUT
-
-A presigned upload URL would let a browser write **straight into storage**,
-skipping the application — and therefore skipping every check this library
-exists to perform. Size, MIME type and magic bytes would all go unverified,
-because the library would never see the bytes, and the key would be chosen by
-the caller instead of generated.
-
-It is not offered. Upload through `store()` and keep the validation. If you ever
-genuinely need direct browser-to-storage writes for multi-GB files, implement
-your own `StorageBackend` extension for it and own that trade-off explicitly.
-
----
-
-## Error handling
-
-Every failure is a `FileStorageException`, and the subtypes expose what went
-wrong as properties rather than in the message:
-
-| Exception | Carries | Suggested status |
+| Exception | Properties | Status |
 | --- | --- | --- |
 | `FileNotFoundStorageException` | `key` | 404 |
 | `FileSizeExceededException` | `actualSize`, `maxSize` | 413 |
 | `UnsupportedFileTypeException` | `contentType`, `allowedTypes` | 415 |
 | `ContentMismatchException` | `declaredContentType`, `detectedContentType` | 415 |
 | `StorageUnavailableException` | — (retryable) | 503 |
-| `UnknownStorageProfileException` | `profile`, `knownProfiles` | 500 (configuration bug) |
+| `UnknownStorageProfileException` | `profile`, `knownProfiles` | 500 (config bug) |
 
-Set `fileforge.web.problem-details.enabled: true` and that whole table is mapped
-to RFC 7807 responses for you, with the fields attached as problem extensions:
+They live in `net.mimochodek.fileforge.exception`. With
+`fileforge.web.problem-details.enabled: true` this table is mapped for you, with
+the properties attached as RFC 7807 extension members:
 
 ```json
 {
@@ -701,16 +496,71 @@ to RFC 7807 responses for you, with the fields attached as problem extensions:
 }
 ```
 
-The 503 and 500 branches deliberately report generically and log the cause —
-their messages contain bucket and host names that should not reach clients.
+---
+
+# Configuration reference
+
+Every property. Only `fileforge.s3.bucket` is required.
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `fileforge.provider` | `s3` | Backend to activate. Any other value deactivates the library. |
+| `fileforge.s3.bucket` | — | **Required.** Must already exist. |
+| `fileforge.s3.region` | `us-east-1` | |
+| `fileforge.s3.endpoint` | — | S3-compatible endpoint. Omit for real AWS. |
+| `fileforge.s3.access-key` | — | Omit with `secret-key` to use the AWS credential chain. |
+| `fileforge.s3.secret-key` | — | Must be set together with `access-key`. |
+| `fileforge.s3.path-style-access` | `true` | `false` for real AWS S3. |
+| `fileforge.naming.keep-extension` | `true` | Keep the original extension in the key. |
+| `fileforge.validation.max-file-size` | `50MB` | Enforced against measured content. |
+| `fileforge.validation.allowed-mime-types` | jpeg, png, webp, pdf | Must not be empty. |
+| `fileforge.validation.verify-magic-bytes` | `true` | Content must match its declared type. |
+| `fileforge.validation.unknown-type-policy` | `allow` | `reject` stores only verifiable content. |
+| `fileforge.buffering.in-memory-threshold` | `1MB` | Larger uploads spill to a temp file. |
+| `fileforge.buffering.temp-dir` | JVM temp dir | Where to spill. |
+| `fileforge.web.problem-details.enabled` | `false` | Publish the RFC 7807 handler. |
+| `fileforge.profiles.<name>.folder` | — | Folder for that profile. |
+| `fileforge.profiles.<name>.validation.*` | inherits `fileforge.validation` | Per-profile overrides, field by field. |
+
+## Real AWS S3
+
+Delete `endpoint`, delete both keys, turn off path-style:
+
+```yaml
+fileforge:
+  s3:
+    bucket: my-app-prod
+    region: eu-central-1
+    path-style-access: false
+```
+
+Credentials then come from the AWS default chain, so IAM roles, instance
+profiles, SSO and environment credentials all work. Moving from a self-hosted
+gateway to AWS is these three lines and no code change.
+
+## Profiles
+
+A profile names a category of upload: where it goes and what is allowed in it.
+Declare it once instead of writing `"documents/$name"` and a size check in every
+service.
+
+```kotlin
+storage.store(file, profile = "attachments")
+```
+
+A profile's `validation` block overrides the global one **field by field** —
+setting only `max-file-size` keeps the global whitelist. A profile that sets
+only `folder` keeps the global policy entirely, including a custom
+`FileValidator` bean if you published one. Naming a profile that is not
+configured throws `UnknownStorageProfileException` listing the ones that are.
 
 ---
 
-## Supported file types
+# Supported file types
 
-`verify-magic-bytes` checks that content really is what it claims to be. Types
-with a known signature are verified; whitelisted types without one are accepted
-unless `unknown-type-policy: reject`.
+`verify-magic-bytes` checks that content really is what it claims. Types with a
+known signature are verified; whitelisted types without one are accepted unless
+`unknown-type-policy: reject`.
 
 | Type | MIME | Verified |
 | --- | --- | --- |
@@ -730,69 +580,113 @@ unless `unknown-type-policy: reject`.
 | Excel (legacy) | `application/vnd.ms-excel` | as an OLE2 container |
 | PowerPoint (legacy) | `application/vnd.ms-powerpoint` | as an OLE2 container |
 
-**Only JPEG, PNG, WebP and PDF are whitelisted by default** — list explicitly
-whatever else you intend to store.
-
-### A note on Office formats
+**Only JPEG, PNG, WebP and PDF are whitelisted by default.** List anything else
+you intend to store in `allowed-mime-types`.
 
 `.docx` / `.xlsx` / `.pptx` are ZIP archives and `.doc` / `.xls` are OLE2
-compound files, so magic bytes can only confirm the *container*. FileForge
+compound files, so magic bytes can only confirm the container. FileForge
 verifies that much — an executable declared as `.docx` is rejected — and uses
-the file extension to resolve the container to the specific Office type. That is
-a narrowly scoped exception to "magic bytes win over the extension", valid only
-because both answers are true at once: a PDF renamed to `.docx` is still
-detected as a PDF.
-
-To store Office files you therefore need nothing beyond adding the MIME types to
-`allowed-mime-types`; detection works whether or not the client declares a
-content type.
+the extension to resolve the container to the specific Office type. Detection
+works whether or not the client declares a content type.
 
 ---
 
-## Extending
+# Serving files: presigned URLs or streaming?
 
-The library is two interfaces, and you can replace either.
+A presigned URL is a time-limited signed link that lets its holder read an
+object without storage credentials. It contains the storage endpoint —
+`http://nas.local:7070/…` — so it only works for a fetcher that can reach that
+host.
+
+| | Stream through the app | Presigned, fetched server-side | Presigned, fetched by the browser |
+| --- | --- | --- | --- |
+| Who fetches | your Spring app | another server (BFF, Next.js, worker) | the end user's browser |
+| Storage reachable from | your app | that server | the public internet |
+| Works with a LAN-only NAS | **yes** | **yes** | no |
+| Bytes cross a server of yours | yes | yes, a different one | **no** |
+| Needs storage credentials | yes | **no** | no |
+
+**LAN-only gateway, browser outside it.** The browser cannot reach
+`nas.local:7070`. Stream through the application — Step 5.
+
+**LAN-only gateway with a server-side consumer on that LAN.** Presigned GET
+works, and gives that consumer time-limited read access to one object without
+ever holding S3 credentials. But the bytes still cross a server of yours; you
+have moved the load, not removed it. It pays off when that server does
+something with them — `next/image` fetching, optimizing and caching means your
+app never touches image traffic.
+
+> **The trap:** the URL must stay server-side. Render it into HTML —
+> `<img src={presignedUrl}>` from a Server Component — and the browser becomes
+> the fetcher, pointed at a host it cannot reach.
+
+**Real AWS S3, or a gateway behind a public reverse proxy.** Presigned GET is
+the right choice: no server of yours carries the traffic.
+
+Two things either way. A presigned URL carries **no authorization** — check the
+user may see this file before generating it. And **TTL trades cacheability
+against exposure**: a URL that changes every request defeats HTTP and
+`next/image` caching, because both key on the URL.
+
+**There is no presigned PUT.** It would let a browser write straight into
+storage, skipping every check this library performs. Upload through `store()`.
+
+---
+
+# Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| `MaxUploadSizeExceededException` on anything over 1 MB | `spring.servlet.multipart.max-file-size` not raised. It applies before FileForge. |
+| `store(file, …)` does not compile | Missing `import net.mimochodek.fileforge.web.store`. |
+| `UnsupportedFileTypeException` for a `.docx` | Office MIME types are not in the default whitelist. Add them. |
+| Startup fails: `fileforge.s3.bucket must be configured` | Set it, or set `fileforge.provider` to something other than `s3` to deactivate. |
+| Startup fails: `access-key and secret-key must be set together` | Set both, or neither (then the AWS credential chain is used). |
+| `NoSuchBucket` at runtime | The library does not create buckets. Create it. |
+| `StorageUnavailableException` | Endpoint unreachable: wrong host/port, storage down, firewall. |
+| Presigned URL times out in the browser | The browser cannot reach the storage host. Stream through the app instead. |
+| `list()` returns only 1000 keys | It returns one page. Loop over `nextPageToken`. |
+| No bean of type `S3Client` | Correct — it is not published. Configure the endpoint and credentials instead. |
+| Downloaded file has no extension | A user-typed name has none; append it from the key (Step 5). |
+
+---
+
+# Extending
+
+Two interfaces, either replaceable.
 
 `FileStorage` is what you inject. `StorageBackend` is what a backend implements
-— exact keys only, no validation, naming or policy, because all of that lives
-above it and is shared by every backend:
+— eight methods over exact keys, with no validation, naming or policy, because
+all of that lives above it and is shared:
 
 ```kotlin
 @Bean
 fun storageBackend(): StorageBackend = MyFilesystemBackend(root)
 ```
 
-Publish that and the whole pipeline — sanitization, validation, key generation,
-the `MultipartFile` extension, the error mapping — works unchanged, and no S3
+Publish that and the whole pipeline — validation, key generation, the
+`MultipartFile` extension, the error mapping — works unchanged, and no S3
 configuration is required. `src/test/.../testsupport/InMemoryStorageBackend.kt`
 is a complete example in about 90 lines.
 
 `ObjectKeyGenerator` and `FileValidator` are replaceable the same way. The
-`S3Client` and `S3Presigner` are deliberately **not** beans: a library should not
-contribute generically-typed infrastructure it owns, because it silently crosses
-wires with a consumer's own client. They are private to the backend and closed
-with it.
+`S3Client` and `S3Presigner` are deliberately **not** beans: a library should
+not contribute generically-typed infrastructure it owns, because it silently
+crosses wires with a consumer's own client. They are private to the backend and
+closed with it.
 
 ---
 
-## Commands
+# Commands and releasing
 
 ```bash
 ./gradlew build                  # compile + test
 ./gradlew test                   # integration tests need Docker; skipped otherwise
 ./gradlew publishToMavenLocal    # install into ~/.m2 for local consumption
 
-# If Testcontainers cannot reach your Docker daemon, override the API version:
+# If Testcontainers cannot reach your Docker daemon:
 ./gradlew test -PdockerApiVersion=1.47
 ```
-
-Maintaining the library itself? See
-[DOKUMENTACE-VYVOJARE.md](DOKUMENTACE-VYVOJARE.md) (Czech) — a per-file
-walkthrough, the invariants that must keep holding, and a glossary.
-
----
-
-## Releasing
 
 `.github/workflows/publish.yml` publishes to Maven Central when a **GitHub
 Release is published** — pushing a tag alone does not trigger it:
@@ -802,3 +696,8 @@ Release is published** — pushing a tag alone does not trigger it:
 
 The artifact version comes from `build.gradle.kts`, not from the tag, so keep
 the two in sync. Each version can be published only once.
+
+Maintaining the library itself? See
+[DOKUMENTACE-VYVOJARE.md](DOKUMENTACE-VYVOJARE.md) (Czech) — a per-file
+walkthrough, the invariants that must keep holding, and a glossary.
+Upgrading from `1.0.x`? See [MIGRATION-2.0.md](MIGRATION-2.0.md).
