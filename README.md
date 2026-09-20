@@ -160,35 +160,44 @@ so `attachments` accepts all six types while `photos` accepts images only.
 
 ### Entity
 
+The library hands back **one string: the key**. Everything a human reads is
+yours.
+
 ```kotlin
 @Entity
 class Attachment(
     @Id @GeneratedValue
     val id: Long? = null,
 
-    /** What the library gave you back. Everything else about the bytes is readable from storage. */
+    /** All the library gives you, and all it needs back. */
     val storageKey: String,
 
-    /** The library does not keep this — see below. */
-    val fileName: String,
+    /** Whatever your application calls this attachment — a title the user typed,
+     *  the original file name, a label from an enum. The library has no opinion. */
+    val name: String,
 
     val documentId: Long,
 )
 ```
 
-**The uploaded file name is yours to keep.** The library generates the object
-key and takes nothing from the name but its extension; it neither stores the
-name nor gives it back. That is deliberate:
+**The uploaded file name is not stored and not returned.** The key is generated
+and carries no meaning beyond its extension:
 
-- the name is application data, like the uploader and the upload time — you
-  already have a row per file,
-- storing it in two places invites the two from disagreeing,
-- and reading it from storage costs a request. Rendering a list of 50
-  attachments would be 50 round-trips for something a single `SELECT` already
-  had.
+```
+documents/2026_1f7a8b2c-9d4e-4f31-b0a7-5c6e2f1a3d90.pdf
+```
+
+That is deliberate. Whatever you want to show a user — the name they typed, the
+original file name, or nothing at all — is application data that belongs in the
+row you already have. Keeping it in two places invites the two from disagreeing,
+and reading it back from storage would cost a request per file: a list of 50
+attachments would be 50 round-trips for something one `SELECT` already had.
+
+If your UI never shows an uploaded file name, you need no such column at all —
+the key really is everything.
 
 Content type and size *are* readable with `metadata(key)`, so those need no
-columns unless you want to list them cheaply.
+columns unless you want to list them without touching storage.
 
 ### Service
 
@@ -205,14 +214,10 @@ class AttachmentService(
 ) {
 
     /** Validates, generates a key and writes — all inside store(). */
-    fun upload(documentId: Long, file: MultipartFile): Attachment {
+    fun upload(documentId: Long, name: String, file: MultipartFile): Attachment {
         val stored = storage.store(file, profile = "attachments")
         return repository.save(
-            Attachment(
-                storageKey = stored.key,
-                fileName = file.originalFilename ?: "upload",
-                documentId = documentId,
-            ),
+            Attachment(storageKey = stored.key, name = name, documentId = documentId),
         )
     }
 
@@ -226,6 +231,18 @@ class AttachmentService(
 }
 ```
 
+> **Naming the download.** A user-typed title usually has no extension, so
+> `downloadAs = attachment.name` would save a PDF as `Smlouva` with no suffix.
+> The key still ends in the extension, so append it:
+>
+> ```kotlin
+> private val Attachment.downloadName: String
+>     get() = storageKey.substringAfterLast('.', "")
+>         .takeIf { it.isNotEmpty() }
+>         ?.let { "$name.$it" }
+>         ?: name
+> ```
+
 ### Controller
 
 ```kotlin
@@ -236,8 +253,9 @@ class AttachmentController(private val service: AttachmentService) {
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun upload(
         @PathVariable documentId: Long,
+        @RequestParam name: String,
         @RequestPart("file") file: MultipartFile,
-    ): AttachmentResponse = service.upload(documentId, file).toResponse()
+    ): AttachmentResponse = service.upload(documentId, name, file).toResponse()
 
     /** Streams the file through the application — always works. */
     @GetMapping("/{id}")
@@ -260,7 +278,7 @@ fun serve(attachment: Attachment): ResponseEntity<StreamingResponseBody> {
         .contentLength(meta.size)
         .header(
             HttpHeaders.CONTENT_DISPOSITION,
-            ContentDisposition.attachment().filename(attachment.fileName).build().toString(),
+            ContentDisposition.attachment().filename(attachment.downloadName).build().toString(),
         )
         .body(
             StreamingResponseBody { out ->
@@ -275,7 +293,7 @@ fun downloadLink(attachment: Attachment): URI =
     storage.downloadUrl(
         key = attachment.storageKey,
         ttl = Duration.ofMinutes(15),
-        downloadAs = attachment.fileName,    // the name your own row remembers
+        downloadAs = attachment.downloadName,   // the name your own row remembers
     )
 ```
 
@@ -340,7 +358,7 @@ storage implementation entirely, publish a `StorageBackend` bean.
 - [ ] Every content type you intend to store is in `allowed-mime-types`
       (the default list is images + PDF only, **no Office formats**)
 - [ ] `import net.mimochodek.fileforge.web.store` where you upload
-- [ ] Persist `StoredFile.key` **and the uploaded file name** — the library keeps only the key
+- [ ] Persist `StoredFile.key`; keep any human-readable name in your own row
 - [ ] Reading with `read(key) { … }` or `readBytes(key)`
 - [ ] Bucket exists on the storage side — the library does not create it
 

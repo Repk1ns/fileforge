@@ -73,10 +73,11 @@ unchanged, so a find-and-replace on the import is enough.
 1.x returned a bare `String`, and every consumer re-derived the rest by hand.
 `StoredFile` gives you `key`, `contentType`, `size`, `checksum` and `storedAt`.
 
-Persist `key` **and the uploaded file name**: the library generates the key and
-takes nothing from the name but its extension, so the name is yours to keep.
-Content type and size are readable with `metadata(key)` if you would rather not
-store them.
+Persist `key`. The library generates it and takes nothing from the uploaded
+name but its extension, so anything a human reads — the original name, a title
+the user typed, nothing at all — is yours to decide and yours to store. Content
+type and size are readable with `metadata(key)` if you would rather not keep
+columns for them.
 
 ### `list` is paginated
 
@@ -205,7 +206,7 @@ handling in charge.
 - [ ] `FileStorageService` -> `FileStorage`, `upload` -> `store`
 - [ ] `archive(from, to)` -> flag the row in your database; there is no move
 - [ ] Remove `FileValidationService` injections and manual `validate()` calls
-- [ ] Keep a column for the uploaded file name — 2.0 does not store it
+- [ ] Decide where any human-readable name lives — 2.0 stores none
 - [ ] Fix `net.mimochodek.fileforge.*Exception` imports to `...exception.*`
 - [ ] Move `max-file-size-bytes` / `allowed-mime-types` under `fileforge.validation`
 - [ ] Confirm the MIME whitelist covers everything you store (validation is now unconditional)
