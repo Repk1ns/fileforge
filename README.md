@@ -21,7 +21,7 @@ Sanitization, size limits, MIME whitelisting, magic-byte verification and key
 generation all happen inside `store()`. There is no path that writes
 unvalidated content and nothing to remember at the call site.
 
-- Kotlin `2.1.10`, JVM 21, AWS SDK v2, Spring Boot `3.5.x`.
+- Built with Kotlin `2.3`, usable from Kotlin `2.1` and newer (including `2.3`); JVM 21, AWS SDK v2, Spring Boot `3.5.x`.
 - Works against AWS S3, Versity Gateway, MinIO, Cloudflare R2 or LocalStack.
 - Adds **no Spring dependency** to your runtime classpath; the AWS SDK is not on
   your compile classpath.
@@ -68,7 +68,7 @@ Published to Maven Central. No repository declaration, no credentials.
 ```kotlin
 // build.gradle.kts
 dependencies {
-    implementation("net.mimochodek:fileforge:2.0.0")
+    implementation("net.mimochodek:fileforge:2.1.0")
 }
 ```
 
@@ -77,7 +77,7 @@ dependencies {
 <dependency>
     <groupId>net.mimochodek</groupId>
     <artifactId>fileforge</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
@@ -295,7 +295,7 @@ table in [Errors](#errors) yourself.
 
 ## Integration checklist
 
-- [ ] `implementation("net.mimochodek:fileforge:2.0.0")` and nothing else added
+- [ ] `implementation("net.mimochodek:fileforge:2.1.0")` and nothing else added
 - [ ] `fileforge.s3.bucket` set, and that bucket exists on the storage side
 - [ ] `spring.servlet.multipart.max-file-size` ≥ `fileforge.validation.max-file-size`
 - [ ] Every content type you will store is in `allowed-mime-types`

@@ -13,7 +13,7 @@ Dokumentace **pro vývojáře a údržbáře samotné knihovny**, ne pro její k
 - Co dělá konkrétní funkce → [referenční přehled, sekce 21](#21-referenční-přehled-funkcí--polopaticky)
 - Jak archivovat místo mazání → [recept v sekci 18](#archivovat-místo-mazání)
 
-Verze popisovaného stavu: **2.0.0**, Kotlin `2.1.10`, JVM 21, AWS SDK v2,
+Verze popisovaného stavu: **2.1.0**, kompilováno Kotlinem `2.3.21` (binárka cílí na Kotlin `2.1`, takže ji použije projekt na Kotlinu 2.1 až 2.3), JVM 21, AWS SDK v2,
 Spring Boot `3.5.6`. Jeden Gradle modul, 29 produkčních souborů, 176 testů.
 
 ---
@@ -922,6 +922,7 @@ zbytku a každý se dá spustit izolovaně.
 | `plugins` | `kotlin.jvm`, `kotlin.plugin.spring`, `dokka 2.0.0`, `nmcp.aggregation`, `java-library`, `maven-publish`, `signing`. **Žádný kapt** — viz sekce 15. |
 | `dependencies` | AWS SDK je **`implementation`**, ne `api` → v POM skončí jako `runtime` a nestojí konzumentovi na compile classpath. `slf4j-api` deklarovaná. `spring-boot-autoconfigure` a `spring-web` `compileOnly`. Z `awssdk:s3` je vyloučen `netty-nio-client`: knihovna staví jen synchronní `S3Client`, takže async Netty stack byl 4 MB kódu, který se nikdy nespustí. Výsledek: 37 artefaktů / 10,7 MB místo 48 / 14,7 MB. |
 | `kotlin { explicitApi() }` | Vynucuje explicitní viditelnost a návratové typy na celé veřejné ploše. Ověřeno: odebrání `public` build shodí. |
+| `kotlin { languageVersion/apiVersion = 2.1, coreLibrariesVersion = "2.1.10" }` | Kompilátor je 2.3, ale metadata se zapisují ve verzi 2.1 a stdlib v POM zůstává 2.1.10. Kompilátor čte metadata nejvýš o jednu verzi novější než on sám → bez tohoto by 2.1.0 rozbilo konzumenty na Kotlinu 2.0/2.1. |
 | `java` | JVM toolchain 21, `withSourcesJar()`, `withJavadocJar()`. |
 | `tasks.named<Jar>("javadocJar")` | `from(tasks.named("dokkaJavadoc"))`. Bez tohoto `withJavadocJar()` zabalí výstup tasku `javadoc`, který tady nemá Java sources → `1.0.0` publikovalo **prázdný javadoc jar**, přestože Dokku aplikovalo. |
 | `tasks.test` | JUnit Platform + pin Docker API verze. |

@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "2.1.10"
-    kotlin("plugin.spring") version "2.1.10"
+    kotlin("jvm") version "2.3.21"
+    kotlin("plugin.spring") version "2.3.21"
     id("org.jetbrains.dokka") version "2.0.0"
     id("com.gradleup.nmcp.aggregation") version "1.6.1"
     `java-library`
@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "net.mimochodek"
-version = "2.0.0"
+version = "2.1.0"
 
 repositories {
     mavenCentral()
@@ -62,6 +62,17 @@ kotlin {
     // explicit return types on everything that is part of the public surface, so
     // nothing leaks into it by accident.
     explicitApi()
+
+    // Built with the Kotlin 2.3 compiler, but the published binary stays consumable
+    // from Kotlin 2.1+: a compiler reads metadata at most one version ahead of
+    // itself, so 2.3 metadata would break every consumer still on 2.0/2.1 - not
+    // something a minor release may do. Same reason the stdlib dependency in the
+    // POM stays at 2.1.10 instead of following the compiler.
+    coreLibrariesVersion = "2.1.10"
+    compilerOptions {
+        languageVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1
+        apiVersion = org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_1
+    }
 }
 
 java {
